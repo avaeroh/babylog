@@ -72,12 +72,8 @@ services:
     env_file:
       - .env
     environment:
-      MB_DB_TYPE: postgres
-      MB_DB_DBNAME: metabase_app
-      MB_DB_HOST: db
+      MB_DB_FILE: /metabase-data/metabase.db
       MB_DB_PORT: 5432
-      MB_DB_USER: ${DB_USER}
-      MB_DB_PASS: ${DB_PASSWORD}
     volumes:
       - /srv/babylog/metabase:/metabase-data
     ports:
