@@ -1,0 +1,14 @@
+# keep source code; only ignore junk
+__pycache__/
+*.pyc
+*.pyo
+*.pytest_cache/
+*.db
+*.sqlite
+.env
+.env.*
+.vscode/
+.idea/
+.git/
+.gitignore
+.DS_Store

@@ -1,0 +1,88 @@
+services:
+  db:
+    image: postgres:16
+    container_name: babylog-db
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - /srv/babylog/db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - default
+
+  api:
+    build: ./babylog-api
+    image: babylog-api:local
+    container_name: babylog-api
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
+      API_KEY: ${API_KEY}
+      TZ: UTC
+    depends_on:
+      - db
+    expose:
+      - "5080"
+    healthcheck:
+      # use curl since it's in the image; exit non-zero on failure
+      test: ["CMD-SHELL", "curl -fsS http://localhost:5080/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - default
+      - proxy
+
+  api-tests:
+    build:
+      context: ./babylog-api
+      target: test
+    image: babylog-api:test
+    env_file:
+      - .env
+    environment:
+      TESTING: "1"        # <-- fixed closing quote
+    command: ["pytest", "-q"]
+
+  adminer:
+    image: adminer
+    container_name: babylog-adminer
+    ports:
+      - "5081:8080"
+    restart: unless-stopped
+    networks:
+      - default
+      - proxy
+
+  metabase:
+    image: metabase/metabase:latest
+    container_name: babylog-metabase
+    env_file:
+      - .env
+    environment:
+      MB_DB_FILE: /metabase-data/metabase.db
+    volumes:
+      - /srv/babylog/metabase:/metabase-data
+    ports:
+      - "5000:3000"
+    restart: unless-stopped
+    networks:
+      - default
+      - proxy
+
+networks:
+  default:
+    name: babylog-internal
+  proxy:
+    external: true
