@@ -14,7 +14,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.config import settings
 from app.api.routes import router as api_router
 from app.adapters.repositories import init_db
-from app.adapters.db import engine  # <-- add this import to ping the DB
+from app.adapters.db import engine
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
 log = logging.getLogger(__name__)
