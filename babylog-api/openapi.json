@@ -11,7 +11,7 @@
         "operationId": "health_health_get",
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "notes": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
@@ -48,7 +48,7 @@
         },
         "responses": {
           "201": {
-            "description": "Successful Response",
+            "notes": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
@@ -56,7 +56,7 @@
             }
           },
           "422": {
-            "description": "Validation Error",
+            "notes": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
@@ -95,7 +95,7 @@
         },
         "responses": {
           "201": {
-            "description": "Successful Response",
+            "notes": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
@@ -103,7 +103,7 @@
             }
           },
           "422": {
-            "description": "Validation Error",
+            "notes": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
@@ -132,10 +132,10 @@
         ],
         "responses": {
           "204": {
-            "description": "Successful Response"
+            "notes": "Successful Response"
           },
           "422": {
-            "description": "Validation Error",
+            "notes": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
@@ -162,7 +162,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "notes": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
@@ -172,7 +172,7 @@
             }
           },
           "422": {
-            "description": "Validation Error",
+            "notes": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
@@ -187,7 +187,7 @@
     "/last/nappyevent": {
       "delete": {
         "summary": "Delete Last Nappy",
-        "description": "If ?type=pee|poo is provided, deletes the latest of that type.\nOtherwise deletes the latest nappy event of any type.",
+        "notes": "If ?type=pee|poo is provided, deletes the latest of that type.\nOtherwise deletes the latest nappy event of any type.",
         "operationId": "delete_last_nappy_last_nappyevent_delete",
         "parameters": [
           {
@@ -218,10 +218,10 @@
         ],
         "responses": {
           "204": {
-            "description": "Successful Response"
+            "notes": "Successful Response"
           },
           "422": {
-            "description": "Validation Error",
+            "notes": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
@@ -264,7 +264,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "notes": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
@@ -274,7 +274,7 @@
             }
           },
           "422": {
-            "description": "Validation Error",
+            "notes": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
@@ -312,7 +312,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "notes": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
@@ -322,7 +322,7 @@
             }
           },
           "422": {
-            "description": "Validation Error",
+            "notes": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
@@ -376,7 +376,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "notes": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
@@ -386,7 +386,7 @@
             }
           },
           "422": {
-            "description": "Validation Error",
+            "notes": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
@@ -527,7 +527,7 @@
             ],
             "title": "Type"
           },
-          "description": {
+          "notes": {
             "anyOf": [
               {
                 "type": "string"
@@ -536,7 +536,7 @@
                 "type": "null"
               }
             ],
-            "title": "Description"
+            "title": "notes"
           },
           "ts": {
             "anyOf": [

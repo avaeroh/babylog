@@ -8,7 +8,7 @@ A self-hosted backend (FastAPI + PostgreSQL) for logging baby activities — fee
 
 - **Logs baby activities**:
   - **Feeds** (breast/bottle, side, duration, volume, notes).
-  - **Nappy events** (pee/poo with free-text description).
+  - **Nappy events** (pee/poo with free-text notes).
 - **Retrieves info**:
   - Latest feed / latest nappy event (optionally filter by type).
   - Aggregated stats over a time window (e.g., last 24h / last 7d).
@@ -176,7 +176,7 @@ Set `API_KEY` in your `.env` and keep it secret.
   {
     "ts": "2025-10-02T10:12:00Z",     // optional; defaults to server time
     "type": "pee" | "poo",
-    "description": "mushy, yellow"
+    "notes": "mushy, yellow"
   }
   ```
 
@@ -208,7 +208,7 @@ curl -s -X POST http://localhost:5080/log/feed \
 # Log a nappy event (poo)
 curl -s -X POST http://localhost:5080/log/nappyevent \
   -H "x-api-key: ${API_KEY}" -H "Content-Type: application/json" \
-  -d '{"type":"poo","description":"yellow mushy"}'
+  -d '{"type":"poo","notes":"yellow mushy"}'
 
 # Get last events
 curl -s -H "x-api-key: ${API_KEY}" http://localhost:5080/last/feed

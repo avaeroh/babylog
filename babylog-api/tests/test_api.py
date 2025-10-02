@@ -11,11 +11,11 @@ def test_auth_required(client):
 
 def test_log_and_get_nappy(client, auth_headers):
     # log pee
-    r = client.post("/log/nappyevent", headers=auth_headers, json={"type":"pee","description":"clear"})
+    r = client.post("/log/nappyevent", headers=auth_headers, json={"type":"pee","notes":"clear"})
     assert r.status_code == 201
 
     # log poo
-    r = client.post("/log/nappyevent", headers=auth_headers, json={"type":"poo","description":"mushy"})
+    r = client.post("/log/nappyevent", headers=auth_headers, json={"type":"poo","notes":"mushy"})
     assert r.status_code == 201
 
     # last any nappy event
@@ -30,13 +30,13 @@ def test_log_and_get_nappy(client, auth_headers):
 
 def test_log_and_get_feed(client, auth_headers):
     # log breast feed
-    r = client.post("/log/feed", headers=auth_headers, json={
+    r = client.post("/log/feedevent", headers=auth_headers, json={
         "type": "breast", "side": "left", "duration_min": 20, "notes": "latched"
     })
     assert r.status_code == 201
 
     # fetch last feed
-    r = client.get("/last/feed", headers=auth_headers)
+    r = client.get("/last/feedevent", headers=auth_headers)
     assert r.status_code == 200
     body = r.json()
     assert body["data"]["type"] == "breast"
@@ -55,16 +55,16 @@ def test_invalid_period(client, auth_headers):
 
 def test_delete_last_feed(client, auth_headers):
     # Ensure at least one feed exists
-    client.post("/log/feed", headers=auth_headers, json={"type":"bottle","volume_ml":60})
-    r = client.delete("/last/feed", headers=auth_headers)
+    client.post("/log/feedevent", headers=auth_headers, json={"type":"bottle","volume_ml":60})
+    r = client.delete("/last/feedevent", headers=auth_headers)
     assert r.status_code == 204
     # Deleting again should 404 (nothing left)
-    r = client.delete("/last/feed", headers=auth_headers)
+    r = client.delete("/last/feedevent", headers=auth_headers)
     assert r.status_code == 404
 
 def test_delete_last_nappyevent_any_and_type(client, auth_headers):
-    client.post("/log/nappyevent", headers=auth_headers, json={"type":"pee","description":"clear"})
-    client.post("/log/nappyevent", headers=auth_headers, json={"type":"poo","description":"mushy"})
+    client.post("/log/nappyevent", headers=auth_headers, json={"type":"pee","notes":"clear"})
+    client.post("/log/nappyevent", headers=auth_headers, json={"type":"poo","notes":"mushy"})
 
     # Delete latest any (should remove poo)
     r = client.delete("/last/nappyevent", headers=auth_headers)

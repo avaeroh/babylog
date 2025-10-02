@@ -10,7 +10,7 @@ def _ensure_utc(dt: Optional[datetime]) -> datetime:
         return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
 
-class FeedIn(BaseModel):
+class FeedEventIn(BaseModel):
     type: Literal["breast", "bottle"]
     side: Optional[Literal["left", "right"]] = None
     duration_min: Optional[int] = Field(default=None, ge=0)
@@ -25,7 +25,7 @@ class FeedIn(BaseModel):
 
 class NappyEventIn(BaseModel):
     type: Literal["pee", "poo"]
-    description: Optional[str] = None
+    notes: Optional[str] = None
     ts: Optional[datetime] = None
 
     @field_validator("ts")

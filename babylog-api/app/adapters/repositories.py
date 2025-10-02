@@ -63,7 +63,7 @@ class NappyEvent(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     ts: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
     type: Mapped[str] = mapped_column(String(10), nullable=False)  # 'pee'|'poo'
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 # -----------------------------------------------------------------------------
 # Bootstrap tables (v1)
@@ -152,9 +152,9 @@ class SqlNappyEventRepo(NappyEventRepo):
         logger.debug("SqlNappyEventRepo created with session %s", hex(id(session)))
 
     @_timed("NappyEvent.add")
-    def add(self, *, ts: datetime, type: str, description: Optional[str]) -> int:
+    def add(self, *, ts: datetime, type: str, notes: Optional[str]) -> int:
         logger.info("Adding nappy event: ts=%s type=%s", ts, type)
-        obj = NappyEvent(ts=ts, type=type, description=description)
+        obj = NappyEvent(ts=ts, type=type, notes=notes)
         with _commit_or_rollback(self.session, "NappyEvent.add"):
             self.session.add(obj)
         self.session.refresh(obj)
@@ -171,7 +171,7 @@ class SqlNappyEventRepo(NappyEventRepo):
         if not row:
             logger.info("NappyEvent.last: no rows found (type=%s)", type)
             return None
-        result = {"ts": row.ts, "data": {"type": row.type, "description": row.description}}
+        result = {"ts": row.ts, "data": {"type": row.type, "notes": row.notes}}
         logger.debug("NappyEvent.last: returning %s", result)
         return result
 
