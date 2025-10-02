@@ -32,3 +32,10 @@ down:
 
 logs:
 	$(COMPOSE) logs -f api
+
+openapi:
+	$(COMPOSE) build api
+	$(COMPOSE) run --rm -T api \
+	  python -c "import json; from app.main import app; print(json.dumps(app.openapi(), indent=2))" \
+	  > babylog-api/openapi.json
+	@echo "Wrote babylog-api/openapi.json"
