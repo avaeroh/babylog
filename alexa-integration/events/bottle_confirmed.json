@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "request": {
+    "type": "IntentRequest",
+    "intent": {
+      "name": "LogBottleFeedIntent",
+      "confirmationStatus": "CONFIRMED",
+      "slots": {
+        "volume_value": { "name": "volume_value", "value": "4", "confirmationStatus": "NONE" },
+        "volume_unit": { "name": "volume_unit", "value": "ounces", "confirmationStatus": "NONE" },
+        "notes": { "name": "notes", "value": "expressed", "confirmationStatus": "NONE" }
+      }
+    }
+  }
+}

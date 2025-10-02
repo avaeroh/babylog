@@ -1,0 +1,13 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Faster installs & smaller image
+ENV PIP_NO_CACHE_DIR=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+# Mount code and tests at runtime via volumes in compose or run context
+CMD ["pytest", "-q"]

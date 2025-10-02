@@ -83,6 +83,24 @@ services:
       - default
       - proxy
 
+  lambda-tests:
+    container_name: babylog-lambda-tests
+    build:
+      context: ./alexa-integration
+      dockerfile: Dockerfile.tests
+    image: babylog-lambda-tests:local
+    env_file:
+      - .env
+    environment:
+      # Unit tests ignore network; integration tests use this base when RUN_LAMBDA_ITESTS=1
+      BABYLOG_BASE_URL: http://api:5080
+      API_KEY: ${API_KEY}
+      PYTHONPATH: /app  
+    volumes:
+      - ./alexa-integration:/app
+    depends_on:
+      - api
+
 networks:
   default:
     name: babylog-internal

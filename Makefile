@@ -58,3 +58,15 @@ openapi-spec:
 	  python -c "import json; from app.main import app; print(json.dumps(app.openapi(), indent=2))" \
 	  > babylog-api/openapi.json
 	@echo "Wrote babylog-api/openapi.json"
+
+#### LAMBDA #####
+lambda-build:
+	$(COMPOSE) build lambda-tests
+
+lambda-test: lambda-build
+	# Fast unit tests (no network)
+	$(COMPOSE) run --rm -e RUN_LAMBDA_ITESTS=0 lambda-tests
+
+lambda-test-clean:
+	$(COMPOSE) build --no-cache --pull lambda-tests
+	$(COMPOSE) run --rm -e RUN_LAMBDA_ITESTS=0 lambda-tests

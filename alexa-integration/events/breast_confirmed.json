@@ -1,0 +1,16 @@
+{
+  "version": "1.0",
+  "request": {
+    "type": "IntentRequest",
+    "intent": {
+      "name": "LogBreastFeedIntent",
+      "confirmationStatus": "CONFIRMED",
+      "slots": {
+        "side": { "name": "side", "value": "left", "confirmationStatus": "NONE" },
+        "duration_value": { "name": "duration_value", "value": "15", "confirmationStatus": "NONE" },
+        "duration_unit": { "name": "duration_unit", "value": "minutes", "confirmationStatus": "NONE" },
+        "notes": { "name": "notes", "value": "sleepy", "confirmationStatus": "NONE" }
+      }
+    }
+  }
+}
