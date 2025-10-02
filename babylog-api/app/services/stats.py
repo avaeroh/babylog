@@ -2,6 +2,8 @@
 from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from app.domain.ports import FeedRepo, NappyEventRepo
+import logging
+log = logging.getLogger(__name__)
 
 def parse_period(period: str) -> timedelta:
     """Parse a period string like '24h' or '7d' into a timedelta."""
