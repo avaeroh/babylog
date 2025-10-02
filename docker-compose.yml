@@ -20,7 +20,9 @@ services:
       - default
 
   api:
-    build: ./babylog-api
+    build:
+      context: ./babylog-api
+      target: prod
     image: babylog-api:local
     container_name: babylog-api
     env_file:
@@ -34,7 +36,6 @@ services:
     expose:
       - "5080"
     healthcheck:
-      # use curl since it's in the image; exit non-zero on failure
       test: ["CMD-SHELL", "curl -fsS http://localhost:5080/health >/dev/null || exit 1"]
       interval: 10s
       timeout: 5s
@@ -52,7 +53,7 @@ services:
     env_file:
       - .env
     environment:
-      TESTING: "1"        # <-- fixed closing quote
+      TESTING: "1"
     command: ["pytest", "-q"]
 
   adminer:
@@ -72,6 +73,12 @@ services:
       - .env
     environment:
       MB_DB_FILE: /metabase-data/metabase.db
+      MB_DB_TYPE: postgres
+      MB_DB_DBNAME: ${DB_NAME}
+      MB_DB_PORT: 5432
+      MB_DB_USER: ${DB_USER}
+      MB_DB_PASS: ${DB_PASSWORD}
+      MB_DB_HOST: db
     volumes:
       - /srv/babylog/metabase:/metabase-data
     ports:

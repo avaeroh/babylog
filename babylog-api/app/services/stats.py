@@ -15,6 +15,7 @@ def parse_period(period: str) -> timedelta:
     raise ValueError("Invalid period unit (use h or d)")
 
 def human_delta(ts: datetime) -> str:
+    log.debug(f"Converting human_delta: ts={ts} ({ts.tzinfo})")
     """
     Convert a datetime into a human-readable difference string like '5m ago' or '2h 30m ago'.
     Handles both naive (no tzinfo) and aware datetimes by normalizing to UTC.
