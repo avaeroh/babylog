@@ -1,3 +1,4 @@
 .env
 build_lambda/
 .pytest_cache/
+*.zip

@@ -7,7 +7,7 @@ endif
 # Use docker-compose v1 (change to `docker compose` if you’ve upgraded to v2)
 COMPOSE ?= docker-compose
 
-.PHONY: help build build-clean test test-clean up down logs wipe-data reset-db openapi
+.PHONY: help build build-clean test test-clean up down logs wipe-data reset-db openapi alexa-zip alexa-zip-list alexa-clean
 
 help:
 	@echo "make build        - Build API and API-Tests images"
@@ -71,28 +71,48 @@ lambda-test-clean:
 	$(COMPOSE) build --no-cache --pull lambda-tests
 	$(COMPOSE) run --rm -e RUN_LAMBDA_ITESTS=0 lambda-tests
 
-# Produces specs/lambda.zip with:
-#   - lambda_function.py at ZIP root
-#   - ask_sdk_core and transitive deps at ZIP root
-# Set Lambda Handler to: lambda_function.lambda_handler
-# Produces specs/lambda.zip with:
-#   - lambda_function.py at ZIP root
-#   - ask_sdk_core, ask_sdk_model, ask_sdk_runtime (and deps) at ZIP root
-# Set Lambda Handler to: lambda_function.lambda_handler
-lambda-zip:
+# --- ALEXA DEVELOPER CONSOLE ZIP -------------------------------------------
+# WHY: The Alexa Developer Console "Code → Upload" expects a ZIP whose ROOT
+#       contains a folder named `lambda/`. That folder is treated as your
+#       Lambda function code. This target builds:
+#         specs/alexa-skill-code.zip
+#       with the structure:
+#         lambda/
+#           lambda_function.py
+#           ask_sdk_core/, ask_sdk_model/, ask_sdk_runtime/, ... (deps)
+# 
+# WHEN TO USE:
+#   - Uploading code via the Alexa Developer Console (Alexa-Hosted flow).
+# 
+# NOT FOR:
+#   - Direct AWS Lambda "Upload .zip" (use your other lambda.zip target where
+#     files live at the ZIP root).
+# 
+# RUNTIME HANDLER:
+#   Handler should still be: lambda_function.lambda_handler
+#   (Alexa will deploy `lambda/` contents as the function root at runtime.)
+alexa-zip:
 	@docker run --rm \
 	  -e PIP_ROOT_USER_ACTION=ignore \
 	  -v "$$PWD":/work -w /work python:3.11-slim /bin/sh -lc '\
 	    set -e; \
-	    rm -rf build_lambda && mkdir -p build_lambda; \
+	    rm -rf build_lambda build_repo; \
+	    mkdir -p build_lambda build_repo/lambda; \
 	    python -m pip install --upgrade pip --no-cache-dir -q; \
 	    pip install --no-cache-dir -q --target build_lambda \
 	      ask-sdk-core==1.19.0 ask-sdk-model ask-sdk-runtime; \
 	    cp alexa-integration/lambda_function.py build_lambda/; \
-	    python -c "import os,zipfile; dst=\"specs/lambda.zip\"; os.makedirs(os.path.dirname(dst),exist_ok=True); z=zipfile.ZipFile(dst,\"w\",zipfile.ZIP_DEFLATED); import os; [z.write(os.path.join(r,f), os.path.relpath(os.path.join(r,f),\"build_lambda\")) for r,_,fs in os.walk(\"build_lambda\") for f in fs]; z.close(); print(\"Wrote\", dst)"; \
+	    cp -a build_lambda/. build_repo/lambda/; \
+	    python -c "import os,zipfile; dst=\"specs/alexa-skill-code.zip\"; os.makedirs(os.path.dirname(dst),exist_ok=True); z=zipfile.ZipFile(dst,\"w\",zipfile.ZIP_DEFLATED); [z.write(os.path.join(r,f), os.path.relpath(os.path.join(r,f),\"build_repo\")) for r,_,fs in os.walk(\"build_repo\") for f in fs]; z.close(); print(\"Wrote\", dst)"; \
 	  '
-	@echo "✅ Built specs/lambda.zip"
+	@echo "✅ Built specs/alexa-skill-code.zip (root contains 'lambda/' folder)"
 
-lambda-clean:
-	@rm -rf build_lambda specs/lambda.zip
-	@echo "🧹 Cleaned lambda artifacts"
+# List the first ~120 lines so you can verify the structure.
+alexa-zip-list:
+	@docker run --rm -v "$$PWD":/work -w /work python:3.11-slim \
+	  python -m zipfile -l specs/alexa-skill-code.zip | sed -n '1,120p'
+
+# Clean working dirs + zip
+alexa-clean:
+	@rm -rf build_lambda build_repo specs/alexa-skill-code.zip
+	@echo "🧹 Cleaned Alexa zip artifacts"
