@@ -1,4 +1,3 @@
-# alexa-integration/tests/test_lambda_unit.py
 import importlib
 import os
 import types
@@ -34,7 +33,6 @@ def make_hi(event):
     intent_dict = req_dict.get("intent", {})
     intent_ns = types.SimpleNamespace(**intent_dict)
     if isinstance(getattr(intent_ns, "slots", None), dict):
-        # keep dict; handlers read values out of it
         pass
     else:
         intent_ns.slots = {}
@@ -71,10 +69,9 @@ def test_bottle_confirmed_posts(monkeypatch, load_event):
     handler = lf.LogBottleFeedIntentHandler()
     resp = handler.handle(hi)
     assert seen["method"] == "POST"
-    assert seen["path"] == "/feeds"
+    assert seen["path"] == "/log/feedevent"     # spec-aligned
     assert seen["payload"]["type"] == "bottle"
-    # 4 oz -> about 118 ml
-    assert 115 <= seen["payload"]["volume_ml"] <= 120
+    assert 115 <= seen["payload"]["volume_ml"] <= 120  # 4 oz ≈ 118 ml
     assert "saved" in (resp["speech"] or "").lower()
 
 def test_breast_requires_side_then_posts(monkeypatch):
@@ -108,9 +105,12 @@ def test_breast_requires_side_then_posts(monkeypatch):
     hi2 = make_hi(event)
     seen = {}
     def _ok(method, path, payload=None):
-        seen["payload"] = payload; return {}
+        seen["method"] = method; seen["path"] = path; seen["payload"] = payload
+        return {}
     monkeypatch.setattr(lf, "_http", _ok)
     resp2 = handler.handle(hi2)
+    assert seen["method"] == "POST"
+    assert seen["path"] == "/log/feedevent"     # spec-aligned
     assert seen["payload"]["type"] == "breast"
     assert seen["payload"]["side"] == "left"
     assert seen["payload"]["duration_min"] == 15
@@ -121,10 +121,13 @@ def test_nappy_number_two_maps_to_poo_and_posts(monkeypatch, load_event):
     hi = make_hi(event)
     seen = {}
     def _ok(method, path, payload=None):
-        seen["payload"] = payload; return {}
+        seen["method"] = method; seen["path"] = path; seen["payload"] = payload
+        return {}
     monkeypatch.setattr(lf, "_http", _ok)
 
     handler = lf.LogNappyIntentHandler()
     resp = handler.handle(hi)
+    assert seen["method"] == "POST"
+    assert seen["path"] == "/log/nappyevent"    # spec-aligned
     assert seen["payload"]["type"] == "poo"
     assert "saved" in (resp["speech"] or "").lower()

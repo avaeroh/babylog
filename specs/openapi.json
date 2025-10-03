@@ -11,7 +11,7 @@
         "operationId": "health_health_get",
         "responses": {
           "200": {
-            "notes": "Successful Response",
+            "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
@@ -21,10 +21,10 @@
         }
       }
     },
-    "/log/feed": {
+    "/log/feedevent": {
       "post": {
         "summary": "Log Feed",
-        "operationId": "log_feed_log_feed_post",
+        "operationId": "log_feed_log_feedevent_post",
         "parameters": [
           {
             "name": "x-api-key",
@@ -41,14 +41,14 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/FeedIn"
+                "$ref": "#/components/schemas/FeedEventIn"
               }
             }
           }
         },
         "responses": {
           "201": {
-            "notes": "Successful Response",
+            "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
@@ -56,7 +56,7 @@
             }
           },
           "422": {
-            "notes": "Validation Error",
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
@@ -95,7 +95,7 @@
         },
         "responses": {
           "201": {
-            "notes": "Successful Response",
+            "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
@@ -103,7 +103,7 @@
             }
           },
           "422": {
-            "notes": "Validation Error",
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
@@ -115,10 +115,10 @@
         }
       }
     },
-    "/last/feed": {
+    "/last/feedevent": {
       "delete": {
         "summary": "Delete Last Feed",
-        "operationId": "delete_last_feed_last_feed_delete",
+        "operationId": "delete_last_feed_last_feedevent_delete",
         "parameters": [
           {
             "name": "x-api-key",
@@ -132,10 +132,10 @@
         ],
         "responses": {
           "204": {
-            "notes": "Successful Response"
+            "description": "Successful Response"
           },
           "422": {
-            "notes": "Validation Error",
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
@@ -148,7 +148,7 @@
       },
       "get": {
         "summary": "Last Feed",
-        "operationId": "last_feed_last_feed_get",
+        "operationId": "last_feed_last_feedevent_get",
         "parameters": [
           {
             "name": "x-api-key",
@@ -162,7 +162,7 @@
         ],
         "responses": {
           "200": {
-            "notes": "Successful Response",
+            "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
@@ -172,7 +172,7 @@
             }
           },
           "422": {
-            "notes": "Validation Error",
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
@@ -187,7 +187,7 @@
     "/last/nappyevent": {
       "delete": {
         "summary": "Delete Last Nappy",
-        "notes": "If ?type=pee|poo is provided, deletes the latest of that type.\nOtherwise deletes the latest nappy event of any type.",
+        "description": "If ?type=pee|poo is provided, deletes the latest of that type.\nOtherwise deletes the latest nappy event of any type.",
         "operationId": "delete_last_nappy_last_nappyevent_delete",
         "parameters": [
           {
@@ -218,10 +218,10 @@
         ],
         "responses": {
           "204": {
-            "notes": "Successful Response"
+            "description": "Successful Response"
           },
           "422": {
-            "notes": "Validation Error",
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
@@ -264,7 +264,7 @@
         ],
         "responses": {
           "200": {
-            "notes": "Successful Response",
+            "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
@@ -274,7 +274,7 @@
             }
           },
           "422": {
-            "notes": "Validation Error",
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
@@ -286,10 +286,10 @@
         }
       }
     },
-    "/stats/feeds": {
+    "/stats/feedevents": {
       "get": {
         "summary": "Stats Feeds",
-        "operationId": "stats_feeds_stats_feeds_get",
+        "operationId": "stats_feeds_stats_feedevents_get",
         "parameters": [
           {
             "name": "period",
@@ -312,7 +312,7 @@
         ],
         "responses": {
           "200": {
-            "notes": "Successful Response",
+            "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
@@ -322,7 +322,7 @@
             }
           },
           "422": {
-            "notes": "Validation Error",
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
@@ -376,7 +376,7 @@
         ],
         "responses": {
           "200": {
-            "notes": "Successful Response",
+            "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
@@ -386,7 +386,7 @@
             }
           },
           "422": {
-            "notes": "Validation Error",
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
@@ -401,7 +401,7 @@
   },
   "components": {
     "schemas": {
-      "FeedIn": {
+      "FeedEventIn": {
         "properties": {
           "type": {
             "type": "string",
@@ -478,7 +478,7 @@
         "required": [
           "type"
         ],
-        "title": "FeedIn"
+        "title": "FeedEventIn"
       },
       "HTTPValidationError": {
         "properties": {
@@ -536,7 +536,7 @@
                 "type": "null"
               }
             ],
-            "title": "notes"
+            "title": "Notes"
           },
           "ts": {
             "anyOf": [

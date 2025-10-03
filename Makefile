@@ -56,8 +56,8 @@ openapi-spec:
 	$(COMPOSE) build api
 	$(COMPOSE) run --rm -T api \
 	  python -c "import json; from app.main import app; print(json.dumps(app.openapi(), indent=2))" \
-	  > babylog-api/openapi.json
-	@echo "Wrote babylog-api/openapi.json"
+	  > specs/openapi.json
+	@echo "Wrote specs/openapi.json"
 
 #### LAMBDA #####
 lambda-build:
@@ -70,3 +70,20 @@ lambda-test: lambda-build
 lambda-test-clean:
 	$(COMPOSE) build --no-cache --pull lambda-tests
 	$(COMPOSE) run --rm -e RUN_LAMBDA_ITESTS=0 lambda-tests
+
+# Produces specs/lambda.zip with:
+#   - lambda_function.py at ZIP root
+#   - ask_sdk_core and transitive deps at ZIP root
+# Set Lambda Handler to: lambda_function.lambda_handler
+lambda-zip:
+	@docker run --rm \
+	  -e PIP_ROOT_USER_ACTION=ignore \
+	  -v "$$PWD":/work -w /work python:3.11-slim bash -lc " \
+	    set -e; \
+	    rm -rf build_lambda && mkdir -p build_lambda; \
+	    python -m pip install --upgrade pip --no-cache-dir -q; \
+	    pip install --no-cache-dir -q --target build_lambda ask-sdk-core==1.19.0; \
+	    cp alexa-integration/lambda_function.py build_lambda/; \
+	    python -c \"import os, zipfile; dst='specs/lambda.zip'; os.makedirs(os.path.dirname(dst), exist_ok=True); z=zipfile.ZipFile(dst,'w',zipfile.ZIP_DEFLATED); import os as _os; [z.write(_os.path.join(r,f), _os.path.relpath(_os.path.join(r,f),'build_lambda')) for r,_,fs in _os.walk('build_lambda') for f in fs]; z.close(); print('Wrote', dst)\" \
+	  "
+	@echo "✅ Built specs/lambda.zip"
