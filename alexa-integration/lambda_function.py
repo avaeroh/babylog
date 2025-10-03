@@ -26,7 +26,7 @@ from ask_sdk_core.utils import is_request_type, is_intent_name
 from ask_sdk_model import Response  # noqa: F401  (useful for type hints in some IDEs)
 
 # ----------------- CONFIG -----------------
-BASE = os.getenv("BABYLOG_BASE_URL", "https://babylog-api.avaeroh.com").rstrip("/")
+BASE = os.getenv("BABYLOG_BASE_URL", "https://babylog-api.<babylog-api-host>.com").rstrip("/")
 API_KEY = os.getenv("API_KEY") or "PASTE_YOUR_API_KEY_HERE"
 
 TIMEOUT_S = float(os.getenv("HTTP_TIMEOUT_S", "6"))
