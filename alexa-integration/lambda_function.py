@@ -7,7 +7,7 @@
 #   GET  /stats/feedevents?period=...
 #
 # Environment variables expected in Lambda:
-#   BABYLOG_BASE_URL (e.g., https://babylog-api.avaeroh.com)
+#   BABYLOG_BASE_URL (e.g., https://babylog-api.example.com)
 #   API_KEY          (required; sent as x-api-key)
 #   HTTP_TIMEOUT_S   (optional; default 6)
 #   HTTP_RETRIES     (optional; default 1)
@@ -21,12 +21,12 @@ import urllib.parse
 from typing import Any, Dict, Optional
 
 from ask_sdk_core.skill_builder import SkillBuilder
-from ask_sdk_core.dispatch_components import AbstractRequestHandler
+from ask_sdk_core.dispatch_components import AbstractRequestHandler, AbstractExceptionHandler
 from ask_sdk_core.utils import is_request_type, is_intent_name
-from ask_sdk_model import Response  # noqa: F401  (useful for type hints in some IDEs)
+from ask_sdk_model import Response  # noqa: F401
 
 # ----------------- CONFIG -----------------
-BASE = os.getenv("BABYLOG_BASE_URL", "https://babylog-api.<babylog-api-host>.com").rstrip("/")
+BASE = os.getenv("BABYLOG_BASE_URL", "https://babylog-api.example.com").rstrip("/")
 API_KEY = os.getenv("API_KEY") or "PASTE_YOUR_API_KEY_HERE"
 
 TIMEOUT_S = float(os.getenv("HTTP_TIMEOUT_S", "6"))
@@ -50,7 +50,6 @@ def _http(method: str, path: str, payload: Optional[Dict[str, Any]] = None) -> D
                 b = r.read().decode("utf-8")
                 return json.loads(b) if b else {}
         except urllib.error.HTTPError as e:
-            # retry 5xx
             if 500 <= e.code < 600 and attempt < RETRY:
                 time.sleep(0.15 * (attempt + 1))
                 continue
@@ -64,10 +63,7 @@ def _http(method: str, path: str, payload: Optional[Dict[str, Any]] = None) -> D
 
 # ---------- Slots & parsing ----------
 def get_slot(hi, name: str) -> Optional[str]:
-    """
-    Return the slot value as a plain string.
-    Tolerates both ASK SDK objects (slot.value) and dict-shaped slots ({'value': ...}).
-    """
+    """Return the slot value as plain string (works with SDK objects or dicts)."""
     intent = getattr(hi.request_envelope.request, "intent", None)
     if not intent or not getattr(intent, "slots", None):
         return None
@@ -79,7 +75,7 @@ def get_slot(hi, name: str) -> Optional[str]:
     return getattr(slot, "value", None)
 
 def parse_volume(volume_value: Optional[str], volume_unit: Optional[str]) -> Optional[int]:
-    """Return millilitres as int, or None if not provided or invalid."""
+    """Return millilitres as int, or None if not provided/invalid."""
     if not volume_value:
         return None
     try:
@@ -89,8 +85,8 @@ def parse_volume(volume_value: Optional[str], volume_unit: Optional[str]) -> Opt
     unit_id = (volume_unit or "").lower()
     if unit_id in ("oz", "ounce", "ounces", "fl oz", "fluid ounces"):
         ml = round(v * OZ_TO_ML)
-    else:  # default to ml if unit is missing/unknown
-        ml = int(round(v))
+    else:
+        ml = int(round(v))  # default to ml
     if ml < 0:
         return None
     return ml
@@ -104,10 +100,7 @@ def parse_duration(duration_value: Optional[str], duration_unit: Optional[str]) 
     except ValueError:
         return None
     unit_id = (duration_unit or "").lower()
-    if unit_id in ("h", "hour", "hours", "hr", "hrs"):
-        minutes = int(round(v * 60))
-    else:  # default to minutes
-        minutes = int(round(v))
+    minutes = int(round(v * 60)) if unit_id in ("h", "hour", "hours", "hr", "hrs") else int(round(v))
     if minutes < 0:
         return None
     return minutes
@@ -154,14 +147,23 @@ def intent_confirmed(hi) -> Optional[bool]:
 
 # ---------- Handlers ----------
 class LaunchHandler(AbstractRequestHandler):
-    def can_handle(self, hi): return is_request_type("LaunchRequest")(hi)
-    def handle(self, hi):
-        speak = "Welcome to Baby Log. You can say, log a bottle, log a breast feed, or log a pee or poo nappy."
+    def can_handle(self, handler_input):
+        return is_request_type("LaunchRequest")(handler_input)
+
+    def handle(self, handler_input):
+        hi = handler_input
+        speak = (
+            "Welcome to Baby Log. You can say, log a bottle, log a breast feed, "
+            "or log a pee or poo nappy."
+        )
         return hi.response_builder.speak(speak).ask("What would you like to do?").response
 
 class LogBottleFeedIntentHandler(AbstractRequestHandler):
-    def can_handle(self, hi): return is_intent_name("LogBottleFeedIntent")(hi)
-    def handle(self, hi):
+    def can_handle(self, handler_input):
+        return is_intent_name("LogBottleFeedIntent")(handler_input)
+
+    def handle(self, handler_input):
+        hi = handler_input
         conf = intent_confirmed(hi)
         notes = get_slot(hi, "notes")
         volume_value = get_slot(hi, "volume_value")
@@ -189,8 +191,11 @@ class LogBottleFeedIntentHandler(AbstractRequestHandler):
             return hi.response_builder.speak("Sorry, I couldn't reach the baby log API.").response
 
 class LogBreastFeedIntentHandler(AbstractRequestHandler):
-    def can_handle(self, hi): return is_intent_name("LogBreastFeedIntent")(hi)
-    def handle(self, hi):
+    def can_handle(self, handler_input):
+        return is_intent_name("LogBreastFeedIntent")(handler_input)
+
+    def handle(self, handler_input):
+        hi = handler_input
         side = (get_slot(hi, "side") or "").lower() or None
         duration_min = parse_duration(get_slot(hi, "duration_value"), get_slot(hi, "duration_unit"))
         notes = get_slot(hi, "notes")
@@ -227,8 +232,11 @@ class LogBreastFeedIntentHandler(AbstractRequestHandler):
             return hi.response_builder.speak("Sorry, I couldn't reach the baby log API.").response
 
 class LogNappyIntentHandler(AbstractRequestHandler):
-    def can_handle(self, hi): return is_intent_name("LogNappyIntent")(hi)
-    def handle(self, hi):
+    def can_handle(self, handler_input):
+        return is_intent_name("LogNappyIntent")(handler_input)
+
+    def handle(self, handler_input):
+        hi = handler_input
         nappy_type = (get_slot(hi, "type") or "").lower()
         notes = get_slot(hi, "notes")
         if not nappy_type:
@@ -268,8 +276,11 @@ class LogNappyIntentHandler(AbstractRequestHandler):
             return hi.response_builder.speak("Sorry, I couldn't reach the baby log API.").response
 
 class LastFeedIntentHandler(AbstractRequestHandler):
-    def can_handle(self, hi): return is_intent_name("LastFeedIntent")(hi)
-    def handle(self, hi):
+    def can_handle(self, handler_input):
+        return is_intent_name("LastFeedIntent")(handler_input)
+
+    def handle(self, handler_input):
+        hi = handler_input
         try:
             last = _http("GET", "/last/feedevent")
             human = last.get("human") or last.get("ts") or "recently"
@@ -286,8 +297,11 @@ class LastFeedIntentHandler(AbstractRequestHandler):
             return hi.response_builder.speak("Sorry, I couldn't fetch the last feed.").response
 
 class StatsIntentHandler(AbstractRequestHandler):
-    def can_handle(self, hi): return is_intent_name("StatsIntent")(hi)
-    def handle(self, hi):
+    def can_handle(self, handler_input):
+        return is_intent_name("StatsIntent")(handler_input)
+
+    def handle(self, handler_input):
+        hi = handler_input
         period = get_slot(hi, "period") or "today"
         try:
             q = urllib.parse.quote(period)
@@ -298,6 +312,25 @@ class StatsIntentHandler(AbstractRequestHandler):
         except Exception:
             return hi.response_builder.speak("Sorry, I couldn't get stats right now.").response
 
+# Optional: handle unexpected utterances gracefully
+class FallbackHandler(AbstractRequestHandler):
+    def can_handle(self, handler_input):
+        return is_intent_name("AMAZON.FallbackIntent")(handler_input)
+    def handle(self, handler_input):
+        return handler_input.response_builder.speak(
+            "Sorry, I didn't catch that. You can say log a bottle or log a nappy."
+        ).ask("What would you like to do?").response
+
+# Optional: catch-all error to avoid silent failures
+class CatchAllExceptionHandler(AbstractExceptionHandler):
+    def can_handle(self, handler_input, exception):
+        return True
+    def handle(self, handler_input, exception):
+        # Log to CloudWatch implicitly; keep the user-facing message friendly.
+        return handler_input.response_builder.speak(
+            "Sorry, something went wrong handling that request."
+        ).ask("Please try again.").response
+
 # ---------- Bootstrap ----------
 sb = SkillBuilder()
 for h in (
@@ -307,7 +340,10 @@ for h in (
     LogNappyIntentHandler(),
     LastFeedIntentHandler(),
     StatsIntentHandler(),
+    FallbackHandler(),           # optional
 ):
     sb.add_request_handler(h)
+
+sb.add_exception_handler(CatchAllExceptionHandler())  # optional
 
 lambda_handler = sb.lambda_handler()
