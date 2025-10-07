@@ -1,16 +1,19 @@
 # lambda_function.py
-# Alexa skill handler for BabyLog — aligned with current OpenAPI spec.
+# Alexa skill handler for BabyLog — aligned with your OpenAPI spec.
 # Endpoints used:
 #   POST /log/feedevent
 #   POST /log/nappyevent
 #   GET  /last/feedevent
+#   GET  /last/nappyevent[?type=pee|poo]
 #   GET  /stats/feedevents?period=...
 #
 # Environment variables expected in Lambda:
 #   BABYLOG_BASE_URL (e.g., https://babylog-api.example.com)
-#   API_KEY          (required; sent as x-api-key)
+#   API_KEY          (optional; sent as x-api-key if set)
 #   HTTP_TIMEOUT_S   (optional; default 6)
 #   HTTP_RETRIES     (optional; default 1)
+
+from __future__ import annotations
 
 import json
 import os
@@ -23,16 +26,12 @@ from typing import Any, Dict, Optional
 from ask_sdk_core.skill_builder import SkillBuilder
 from ask_sdk_core.dispatch_components import AbstractRequestHandler
 from ask_sdk_core.utils import is_request_type, is_intent_name
-from ask_sdk_model import Response  # noqa: F401
-from ask_sdk_model.dialog import (
-    ElicitSlotDirective,
-    ConfirmIntentDirective,
-)
+from ask_sdk_model import Response  # noqa: F401  (type hints)
+from ask_sdk_model.dialog import ElicitSlotDirective, ConfirmIntentDirective
 
 # ----------------- CONFIG -----------------
 BASE = os.getenv("BABYLOG_BASE_URL", "https://babylog-api.example.com").rstrip("/")
 API_KEY = os.getenv("API_KEY") or ""
-
 TIMEOUT_S = float(os.getenv("HTTP_TIMEOUT_S", "6"))
 RETRY = int(os.getenv("HTTP_RETRIES", "1"))
 
@@ -42,7 +41,6 @@ OZ_TO_ML = 29.5735
 def _http(method: str, path: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     url = f"{BASE}{path}"
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
-
     headers = {"Content-Type": "application/json"}
     if API_KEY:
         headers["x-api-key"] = API_KEY
@@ -54,6 +52,7 @@ def _http(method: str, path: str, payload: Optional[Dict[str, Any]] = None) -> D
                 b = r.read().decode("utf-8")
                 return json.loads(b) if b else {}
         except urllib.error.HTTPError as e:
+            # retry on 5xx
             if 500 <= e.code < 600 and attempt < RETRY:
                 time.sleep(0.15 * (attempt + 1))
                 continue
@@ -65,21 +64,41 @@ def _http(method: str, path: str, payload: Optional[Dict[str, Any]] = None) -> D
                 continue
             raise RuntimeError(f"Network error: {e.reason}")
 
-# ---------- Slots & parsing ----------
-def get_slot(hi, name: str) -> Optional[str]:
-    """
-    Return the slot value as a plain string.
-    Tolerates both ASK SDK objects (slot.value) and dict-shaped slots ({'value': ...}).
-    """
-    intent = getattr(hi.request_envelope.request, "intent", None)
-    if not intent or not getattr(intent, "slots", None):
+# ---------- Slot helpers & parsing ----------
+def _get_slot_obj(handler_input, name: str):
+    intent = getattr(handler_input.request_envelope.request, "intent", None)
+    slots = getattr(intent, "slots", None)
+    if not slots:
         return None
-    slot = intent.slots.get(name)
+    return slots.get(name)
+
+def get_slot_value(handler_input, name: str) -> Optional[str]:
+    """Return the spoken value string, tolerant of dict or Slot objects."""
+    slot = _get_slot_obj(handler_input, name)
     if not slot:
         return None
     if isinstance(slot, dict):
         return slot.get("value")
     return getattr(slot, "value", None)
+
+def get_slot_resolution_id(handler_input, name: str) -> Optional[str]:
+    """
+    Return the resolved canonical id for a custom slot (if ER_SUCCESS_MATCH),
+    e.g. 'pee' or 'poo' for NAPPY_TYPE.
+    """
+    slot = _get_slot_obj(handler_input, name)
+    try:
+        rpa = slot.resolutions.resolutions_per_authority  # type: ignore[attr-defined]
+        for auth in rpa or []:
+            code = getattr(getattr(auth, "status", None), "code", None)
+            # compare as string; value may be enum or str depending on SDK version
+            if str(getattr(code, "value", code)) == "ER_SUCCESS_MATCH":
+                vals = getattr(auth, "values", None) or []
+                if vals and vals[0].value and vals[0].value.id:
+                    return vals[0].value.id
+    except Exception:
+        pass
+    return None
 
 def parse_volume(volume_value: Optional[str], volume_unit: Optional[str]) -> Optional[int]:
     """Return millilitres as int, or None if not provided or invalid."""
@@ -115,34 +134,25 @@ def parse_duration(duration_value: Optional[str], duration_unit: Optional[str]) 
         return None
     return minutes
 
-def summarise_bottle(volume_ml: Optional[int], notes: Optional[str]) -> str:
-    parts = ["bottle feed"]
-    if volume_ml is not None:
-        parts.append(f"{volume_ml} millilitres")
-    if notes:
-        parts.append(f"notes: {notes}")
-    return ", ".join(parts)
+def normalise_nappy(raw_value: Optional[str], resolved_id: Optional[str]) -> Optional[str]:
+    """
+    Map arbitrary inputs to 'pee' or 'poo'.
+    Prefer the entity-resolution id; fall back to keyword heuristics.
+    """
+    if resolved_id in ("pee", "poo"):
+        return resolved_id
+    t = (raw_value or "").strip().lower()
+    if not t:
+        return None
+    if "two" in t or t == "2" or "poo" in t or "poop" in t or "pooh" in t or "stool" in t or "faec" in t:
+        return "poo"
+    if "one" in t or t == "1" or "pee" in t or "wee" in t or "urine" in t:
+        return "pee"
+    return None
 
-def summarise_breast(side: Optional[str], duration_min: Optional[int], notes: Optional[str]) -> str:
-    parts = ["breast feed"]
-    if side:
-        parts.append(f"{side} side")
-    if duration_min is not None:
-        parts.append(f"{duration_min} minutes")
-    if notes:
-        parts.append(f"notes: {notes}")
-    return ", ".join(parts)
-
-def summarise_nappy(nappy_type: str, notes: Optional[str]) -> str:
-    pretty = "pee" if nappy_type.lower() in ("pee", "number one", "number 1", "wee", "urine") else "poo"
-    parts = [f"{pretty} nappy"]
-    if notes:
-        parts.append(f"notes: {notes}")
-    return ", ".join(parts)
-
-def intent_confirmed(hi) -> Optional[bool]:
+def intent_confirmed(handler_input) -> Optional[bool]:
     """Return True if intent CONFIRMED, False if DENIED, None if NONE."""
-    intent = getattr(hi.request_envelope.request, "intent", None)
+    intent = getattr(handler_input.request_envelope.request, "intent", None)
     if not intent:
         return None
     status = getattr(intent, "confirmation_status", None) or getattr(intent, "confirmationStatus", None)
@@ -159,28 +169,33 @@ def intent_confirmed(hi) -> Optional[bool]:
 class LaunchHandler(AbstractRequestHandler):
     def can_handle(self, handler_input):
         return is_request_type("LaunchRequest")(handler_input)
+
     def handle(self, handler_input):
-        speak = ("Welcome to Baby Log. You can say, log a feed, log a bottle, "
-                 "log a breast feed, or log a pee or poo nappy.")
+        speak = (
+            "Welcome to Baby Log. You can say, log a feed, log a bottle, "
+            "log a breast feed, or log a pee or poo nappy."
+        )
         return handler_input.response_builder.speak(speak).ask("What would you like to do?").response
 
 class HelpHandler(AbstractRequestHandler):
     def can_handle(self, handler_input):
         return is_intent_name("AMAZON.HelpIntent")(handler_input)
+
     def handle(self, handler_input):
         speak = (
-            "Here are some things you can say. "
+            "Here are some examples. "
             "Add a poo. Add a nappy event with a number two. "
             "Log a bottle 120 millilitres. "
             "Log a breast feed left for 15 minutes. "
             "Log a feed. "
-            "Ask, when was the last feed? Or, how many feeds today?"
+            "Ask, when was the last feed, or, when was the last nappy."
         )
         return handler_input.response_builder.speak(speak).ask("What would you like to try?").response
 
 class FallbackHandler(AbstractRequestHandler):
     def can_handle(self, handler_input):
         return is_intent_name("AMAZON.FallbackIntent")(handler_input)
+
     def handle(self, handler_input):
         speak = "Sorry, I didn’t get that. You can say, log a feed, or add a poo."
         return handler_input.response_builder.speak(speak).ask("What would you like to do?").response
@@ -188,6 +203,7 @@ class FallbackHandler(AbstractRequestHandler):
 class SessionEndedHandler(AbstractRequestHandler):
     def can_handle(self, handler_input):
         return is_request_type("SessionEndedRequest")(handler_input)
+
     def handle(self, handler_input):
         return handler_input.response_builder.response
 
@@ -195,10 +211,11 @@ class LogFeedIntentHandler(AbstractRequestHandler):
     """Generic feed entry. If no type is provided, ask 'Bottle or breast?'."""
     def can_handle(self, handler_input):
         return is_intent_name("LogFeedIntent")(handler_input)
+
     def handle(self, handler_input):
         conf = intent_confirmed(handler_input)
-        feed_type = (get_slot(handler_input, "feed_type") or "").lower() or None
-        notes = get_slot(handler_input, "notes")
+        feed_type = (get_slot_value(handler_input, "feed_type") or "").lower() or None
+        notes = get_slot_value(handler_input, "notes")
 
         if not feed_type or feed_type not in ("bottle", "breast"):
             prompt = "Bottle or breast?"
@@ -211,14 +228,21 @@ class LogFeedIntentHandler(AbstractRequestHandler):
             )
 
         if feed_type == "bottle":
-            volume_ml = parse_volume(get_slot(handler_input, "volume_value"),
-                                     get_slot(handler_input, "volume_unit"))
+            volume_ml = parse_volume(
+                get_slot_value(handler_input, "volume_value"),
+                get_slot_value(handler_input, "volume_unit"),
+            )
             if conf is None:
-                summary = summarise_bottle(volume_ml, notes)
+                summary = "You're about to log a bottle feed"
+                if volume_ml is not None:
+                    summary += f", {volume_ml} millilitres"
+                if notes:
+                    summary += f", notes: {notes}"
+                summary += ". Shall I save it?"
                 return (
                     handler_input.response_builder
-                    .speak(f"{summary}. Do you want me to save it?")
-                    .ask("Shall I save it?")
+                    .speak(summary)
+                    .ask("Do you want me to save it?")
                     .add_directive(ConfirmIntentDirective())
                     .response
                 )
@@ -232,9 +256,11 @@ class LogFeedIntentHandler(AbstractRequestHandler):
                 return handler_input.response_builder.speak("Sorry, I couldn't reach the baby log API.").response
 
         # breast
-        side = (get_slot(handler_input, "side") or "").lower() or None
-        duration_min = parse_duration(get_slot(handler_input, "duration_value"),
-                                      get_slot(handler_input, "duration_unit"))
+        side = (get_slot_value(handler_input, "side") or "").lower() or None
+        duration_min = parse_duration(
+            get_slot_value(handler_input, "duration_value"),
+            get_slot_value(handler_input, "duration_unit"),
+        )
         if not side or side not in ("left", "right"):
             prompt = "Left or right side?"
             return (
@@ -245,11 +271,16 @@ class LogFeedIntentHandler(AbstractRequestHandler):
                 .response
             )
         if conf is None:
-            summary = summarise_breast(side, duration_min, notes)
+            summary = f"You're about to log a breast feed on the {side} side"
+            if duration_min is not None:
+                summary += f" for {duration_min} minutes"
+            if notes:
+                summary += f", notes: {notes}"
+            summary += ". Shall I save it?"
             return (
                 handler_input.response_builder
-                .speak(f"{summary}. Do you want me to save it?")
-                .ask("Shall I save it?")
+                .speak(summary)
+                .ask("Do you want me to save it?")
                 .add_directive(ConfirmIntentDirective())
                 .response
             )
@@ -265,19 +296,25 @@ class LogFeedIntentHandler(AbstractRequestHandler):
 class LogBottleFeedIntentHandler(AbstractRequestHandler):
     def can_handle(self, handler_input):
         return is_intent_name("LogBottleFeedIntent")(handler_input)
+
     def handle(self, handler_input):
         conf = intent_confirmed(handler_input)
-        notes = get_slot(handler_input, "notes")
-        volume_value = get_slot(handler_input, "volume_value")
-        volume_unit = get_slot(handler_input, "volume_unit")
+        notes = get_slot_value(handler_input, "notes")
+        volume_value = get_slot_value(handler_input, "volume_value")
+        volume_unit = get_slot_value(handler_input, "volume_unit")
         volume_ml = parse_volume(volume_value, volume_unit)
 
         if conf is None:
-            summary = summarise_bottle(volume_ml, notes)
+            summary = "You're about to log a bottle feed"
+            if volume_ml is not None:
+                summary += f", {volume_ml} millilitres"
+            if notes:
+                summary += f", notes: {notes}"
+            summary += ". Shall I save it?"
             return (
                 handler_input.response_builder
-                .speak(f"{summary}. Do you want me to save it?")
-                .ask("Shall I save it?")
+                .speak(summary)
+                .ask("Do you want me to save it?")
                 .add_directive(ConfirmIntentDirective())
                 .response
             )
@@ -295,11 +332,14 @@ class LogBottleFeedIntentHandler(AbstractRequestHandler):
 class LogBreastFeedIntentHandler(AbstractRequestHandler):
     def can_handle(self, handler_input):
         return is_intent_name("LogBreastFeedIntent")(handler_input)
+
     def handle(self, handler_input):
-        side = (get_slot(handler_input, "side") or "").lower() or None
-        duration_min = parse_duration(get_slot(handler_input, "duration_value"),
-                                      get_slot(handler_input, "duration_unit"))
-        notes = get_slot(handler_input, "notes")
+        side = (get_slot_value(handler_input, "side") or "").lower() or None
+        duration_min = parse_duration(
+            get_slot_value(handler_input, "duration_value"),
+            get_slot_value(handler_input, "duration_unit"),
+        )
+        notes = get_slot_value(handler_input, "notes")
 
         if not side or side not in ("left", "right"):
             prompt = "Left or right side?"
@@ -313,11 +353,16 @@ class LogBreastFeedIntentHandler(AbstractRequestHandler):
 
         conf = intent_confirmed(handler_input)
         if conf is None:
-            summary = summarise_breast(side, duration_min, notes)
+            summary = f"You're about to log a breast feed on the {side} side"
+            if duration_min is not None:
+                summary += f" for {duration_min} minutes"
+            if notes:
+                summary += f", notes: {notes}"
+            summary += ". Shall I save it?"
             return (
                 handler_input.response_builder
-                .speak(f"{summary}. Do you want me to save it?")
-                .ask("Shall I save it?")
+                .speak(summary)
+                .ask("Do you want me to save it?")
                 .add_directive(ConfirmIntentDirective())
                 .response
             )
@@ -335,30 +380,36 @@ class LogBreastFeedIntentHandler(AbstractRequestHandler):
 class LogNappyIntentHandler(AbstractRequestHandler):
     def can_handle(self, handler_input):
         return is_intent_name("LogNappyIntent")(handler_input)
+
     def handle(self, handler_input):
-        nappy_type = (get_slot(handler_input, "type") or "").lower()
-        notes = get_slot(handler_input, "notes")
-        if not nappy_type:
+        raw = get_slot_value(handler_input, "type")
+        rid = get_slot_resolution_id(handler_input, "type")
+        norm = normalise_nappy(raw, rid)
+        notes = get_slot_value(handler_input, "notes")
+
+        if not norm:
+            # First time or unrecognised → ask
+            prompt = "Was it pee, or poo?"
             return (
                 handler_input.response_builder
-                .speak("Was it pee, or poo?")
-                .ask("Pee or poo?")
+                .speak(prompt)
+                .ask(prompt)
                 .add_directive(ElicitSlotDirective(slot_to_elicit="type"))
                 .response
             )
 
-        # Normalize “number one/two” → pee/poo
-        if "two" in nappy_type or "2" in nappy_type or "poo" in nappy_type or "poop" in nappy_type:
-            norm = "poo"
-        else:
-            norm = "pee"
-
         conf = intent_confirmed(handler_input)
         if conf is None:
-            summary = summarise_nappy(norm, notes)
+            label = raw or norm
+            if raw and norm and raw.strip().lower() != norm:
+                label = f"{raw} ({norm})"
+            summary = f"You're about to log a nappy event with type {label}."
+            if notes:
+                summary += f" Notes: {notes}."
+            summary += " Shall I save it?"
             return (
                 handler_input.response_builder
-                .speak(f"{summary}. Shall I save it?")
+                .speak(summary)
                 .ask("Do you want me to save it?")
                 .add_directive(ConfirmIntentDirective())
                 .response
@@ -377,6 +428,7 @@ class LogNappyIntentHandler(AbstractRequestHandler):
 class LastFeedIntentHandler(AbstractRequestHandler):
     def can_handle(self, handler_input):
         return is_intent_name("LastFeedIntent")(handler_input)
+
     def handle(self, handler_input):
         try:
             last = _http("GET", "/last/feedevent")
@@ -393,11 +445,31 @@ class LastFeedIntentHandler(AbstractRequestHandler):
         except Exception:
             return handler_input.response_builder.speak("Sorry, I couldn't fetch the last feed.").response
 
+class LastNappyIntentHandler(AbstractRequestHandler):
+    def can_handle(self, handler_input):
+        return is_intent_name("LastNappyIntent")(handler_input)
+
+    def handle(self, handler_input):
+        raw = get_slot_value(handler_input, "type")
+        rid = get_slot_resolution_id(handler_input, "type")
+        norm = normalise_nappy(raw, rid)
+        q = f"?type={norm}" if norm in ("pee", "poo") else ""
+        try:
+            last = _http("GET", f"/last/nappyevent{q}")
+            human = last.get("human") or last.get("ts") or "recently"
+            data = last.get("data", {})
+            typ = data.get("type", "nappy")
+            speak = f"Last nappy was {typ} at {human}."
+            return handler_input.response_builder.speak(speak).response
+        except Exception:
+            return handler_input.response_builder.speak("Sorry, I couldn't fetch the last nappy.").response
+
 class StatsIntentHandler(AbstractRequestHandler):
     def can_handle(self, handler_input):
         return is_intent_name("StatsIntent")(handler_input)
+
     def handle(self, handler_input):
-        period = get_slot(handler_input, "period") or "today"
+        period = get_slot_value(handler_input, "period") or "today"
         try:
             q = urllib.parse.quote(period)
             stats = _http("GET", f"/stats/feedevents?period={q}")
@@ -419,6 +491,7 @@ for h in (
     LogBreastFeedIntentHandler(),
     LogNappyIntentHandler(),
     LastFeedIntentHandler(),
+    LastNappyIntentHandler(),
     StatsIntentHandler(),
 ):
     sb.add_request_handler(h)
