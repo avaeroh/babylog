@@ -114,17 +114,4 @@ lambda-zip-aws:
 	    cd build_lambda && zip -qr ../specs/lambda.zip .; \
 	    echo "Wrote specs/lambda.zip" \
 	  '
-	@echo "✅ Built specs/lambda.zip (pure-Python, root module = lambda_function.py)"
-
-lambda-zip-aws-list:
-	@docker run --rm $(DOCKER_PLATFORM) -v "$$PWD":/work -w /work python:3.11-slim \
-	  python -m zipfile -l specs/lambda.zip | sed -n '1,200p'
-
-lambda-zip-aws-verify:
-	@docker run --rm -v "$$PWD":/work -w /work python:3.11-slim \
-	  python -c "import sys,zipfile; sys.path.insert(0,'specs/lambda.zip'); bad=[n for n in zipfile.ZipFile('specs/lambda.zip').namelist() if n.endswith('.so')]; import lambda_function, ask_sdk_core, ask_sdk_model, ask_sdk_runtime; print('Imports OK:', lambda_function.__file__); print('Native .so files in zip:', 'None' if not bad else bad)"
-
-
-lambda-zip-aws-clean:
-	@rm -rf build_lambda specs/lambda.zip
-	@echo "🧹 Cleaned Lambda zip artifacts"
+	@echo "✅ Built specs/lambda.zip. Upload this to AWS Lambda (Python 3.11)."

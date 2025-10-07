@@ -73,43 +73,99 @@ make openapi   # or: make openapi-spec (depending on your Makefile target)
 
 ## Alexa Integration
 
+BabyLog ships with an Alexa Skill implementation so you can log and query events hands‑free.
+
 ### What’s included
 - **Interaction model:** `alexa-integration/models/interaction-model.json`
 - **Lambda handler:** `alexa-integration/lambda_function.py`
-- **Unit tests:** `alexa-integration/tests/*` (+ sample events in `alexa-integration/events/`)
+- **Sample events:** `alexa-integration/events/`
+- **Unit tests:** `alexa-integration/tests/*`
 
-### Behaviour & dialogs
-- **Nappy events:** user can say **“pee” / “number one”** or **“poo” / “number two”**. Notes are prompted but optional. **Timestamps are set server-side** (API computes UTC now).
-- **Feeding events:**
-  - **Type is required** and implicit in intent (`LogBottleFeedIntent` vs `LogBreastFeedIntent`).
-  - If **breast**, Alexa **elicits side** (**left/right**) if not said.
-  - **Notes** are prompted but optional.
-  - **Quantities are optional**:
-    - Bottle: supports **ml** and **ounces** (automatic oz→ml conversion).
-    - Breast: supports **minutes** and **hours** (automatic hours→minutes conversion).
-- **Playback/confirmation:** before writing, Alexa **confirms** and only POSTs after a “Yes”.
+### One‑time setup
 
-### Deploying the Lambda (manual upload)
-1) **Zip the handler:**
-   ```bash
-   cd alexa-integration && zip -r ../specs/lambda.zip lambda_function.py
-   ```
-2) In AWS Lambda (Python 3.11), set **Handler** to `lambda_function.lambda_handler` and **upload** `specs/lambda.zip`.
-3) Set environment variables:
-   - `BABYLOG_BASE_URL = https://babylog-api.<your-domain>.com`
-   - `API_KEY = <your api key>`
-   - (optional) `HTTP_TIMEOUT_S = 6`, `HTTP_RETRIES = 1`
-4) In the **Alexa Developer Console**:
-   - Paste the interaction model JSON and **Build** the model.
-   - Set the skill **Endpoint** to your Lambda ARN.
-5) Test in the Alexa simulator:
-   - “open baby log”  
-   - “log a bottle” → *Alexa confirms → say ‘yes’*  
-   - “log a left side breast feed for fifteen minutes”  
-   - “log a number two nappy with messy”  
-   - “what was the last feed”
+1) **Create the Lambda (EU‑West / Ireland).**  
+   - Runtime: **Python 3.11**  
+   - Handler: **`lambda_function.lambda_handler`**  
+   - Upload a deployment ZIP that contains `lambda_function.py` and Python deps at the ZIP root (or use the AWS code editor to paste the file).
 
-> You can also smoke-test the Lambda in-console by pasting one of the sample events from `alexa-integration/events`.
+2) **Configure Lambda environment variables.**
+   - `BABYLOG_BASE_URL` — e.g. `https://babylog-api.<your-domain>.com`
+   - `API_KEY` — your API key
+   - *(optional)* `HTTP_TIMEOUT_S` (default `6`), `HTTP_RETRIES` (default `1`)
+   - *(optional admin)* `BABYLOG_CLEAR_PATH` (default `/admin/clear`) and `BABYLOG_CLEAR_METHOD` (default `POST`) if you expose a “clear all data” endpoint
+
+3) **Create the Alexa Skill (EU marketplace) and link Lambda.**
+   - In the **Alexa Developer Console → Build → Interaction Model**, paste the JSON from `alexa-integration/models/interaction-model.json` and **Build Model**.
+   - In **Endpoint**, choose **AWS Lambda ARN** and paste your Lambda’s **EU (Ireland)** ARN in the *Default Region* field.
+   - Save.
+
+4) **Test.**
+   - Open the **Test** tab for the skill and set test mode to **Development**.  
+   - Try: “**open baby log**”.
+
+> **Note on packaging:** If you prefer zipping locally, ensure your ZIP root contains `lambda_function.py` and the pure‑Python ASK SDK (`ask_sdk_core`, `ask_sdk_runtime`, `ask_sdk_model`) — no compiled `.so` files. The handler in this repo avoids heavy deps.
+
+### How to use (voice examples)
+
+**Start**
+- “**open baby log**” → *Alexa:* **Welcome to Baby Log.** (reprompt: *Say help to hear what I can do.*)
+- “**help**” → tips + examples
+
+**Log a nappy**
+- “**add a poo**” / “**add a number two**” / “**log a pee nappy**”  
+  → Alexa summarises and asks **“Do you want me to save it?”** → say **“Yes”** to commit.
+- Optional notes: “**add a poo with leaky**”
+
+**Log a feed**
+- “**log a bottle 120 millilitres**”
+- “**log a breast feed left for ten minutes**”  
+  If side or duration is missing, Alexa will ask: “**Left or right side?**” etc., then confirm before saving.
+- Generic: “**log a feed**” → Alexa asks **“Bottle or breast?”**
+
+**Latest entries**
+- “**when was the last feed**”
+- “**when was the last poo**” / “**last pee nappy**”
+
+**Statistics**
+- “**how many feeds today**”
+- “**how many nappies in the last seven days**”
+- “**how many poos yesterday**”
+
+**Delete (undo) the last item**
+- “**delete the last feed**”
+- “**delete the last nappy**” / “**delete the last poo nappy**”
+
+**Clear all data (dangerous)**
+- “**clear all data**” → Alexa: “**This will remove all data. Are you sure? Say Yes to confirm.**” → say **“Yes”** to proceed.
+  - Requires that your API exposes an admin clear route (see environment variables above). If not configured, Alexa will say it isn’t supported.
+
+### What Alexa does behind the scenes
+
+- **Nappy logging** → `POST /log/nappyevent` with `{"type":"pee"|"poo","notes":..., "ts":null}`  
+- **Feed logging** → `POST /log/feedevent` (`bottle` uses `volume_ml`, `breast` uses `side` and/or `duration_min`)  
+- **Latest** → `GET /last/feedevent` or `GET /last/nappyevent[?type=pee|poo]`  
+- **Stats** → `GET /stats/feedevents?period=...` or `GET /stats/nappyevents?period=...&type=...`  
+- **Delete** → `DELETE /last/feedevent` or `DELETE /last/nappyevent[?type=...]`  
+- **Clear all** → calls `{BABYLOG_BASE_URL}{BABYLOG_CLEAR_PATH}` with `x-api-key` (if configured)
+
+All writes send `ts: null` so **the server timestamps in UTC “now”**.
+
+### Tips for better recognition
+
+- The model understands synonyms for nappies (e.g., **“number one”/“number two”**, **“poop/poo”**, **“wee/pee”**).  
+- If Alexa asks for missing details (e.g., breast **side**), just answer the question — you don’t need to start over.
+- If Alexa is unsure, she’ll say she didn’t catch that and suggest saying **help**.
+
+### Troubleshooting
+
+- **“The requested skill did not provide a valid response”**  
+  Check CloudWatch logs for the Lambda. Common issues: wrong `BABYLOG_BASE_URL`, unreachable host, or missing `API_KEY`.
+- **Wrong region / no response**  
+  Make sure your skill’s **Endpoint → Default Region** uses the **EU (Ireland)** Lambda ARN.
+- **Skill asks for info I already gave**  
+  Try rephrasing using the model’s phrasings above. If it persists, rebuild the model in the Developer Console and try again.
+- **Clear all data says unsupported**  
+  Add the admin endpoint to your API and set `BABYLOG_CLEAR_PATH` / `BABYLOG_CLEAR_METHOD` in Lambda env vars.
 
 ---
 
@@ -131,35 +187,45 @@ Convenience commands:
 
 ## API Overview
 
-All modifying routes require an API key. The Lambda uses **`Authorization: Bearer <API_KEY>`**; you may also support `X-API-Key` if enabled in your FastAPI deps.
+All modifying routes require an API key. The Lambda sends the key as **`x-api-key`**.
 
 - `GET /health` — Health check (no key required)
-- `POST /feeds` — Log a feed event (body: `FeedEventIn`)
-  - `{"type":"bottle","volume_ml":120,"notes":"…","ts":null}`
-  - `{"type":"breast","side":"left","duration_min":15,"notes":"…","ts":null}`
-- `POST /nappies` — Log a nappy event (body: `NappyEventIn`)
+- `POST /log/feedevent` — Log a feed event (body: `FeedEventIn`)
+  - Bottle: `{"type":"bottle","volume_ml":120,"notes":"…","ts":null}`
+  - Breast: `{"type":"breast","side":"left","duration_min":15,"notes":"…","ts":null}`
+- `POST /log/nappyevent` — Log a nappy event (body: `NappyEventIn`)
   - `{"type":"pee","notes":"…","ts":null}` or `{"type":"poo","notes":"…","ts":null}`
-- `GET /feeds/last` — Latest feed event (returns `LastOut` with `human` and `data`)
-- `GET /stats?period=today|this%20week|last%2024%20hours` — Period stats (returns `StatsOut`)
+- `GET /last/feedevent` — Latest feed (returns `LastOut` with `human` and `data`)
+- `GET /last/nappyevent[?type=pee|poo]` — Latest nappy
+- `DELETE /last/feedevent` — Delete last feed
+- `DELETE /last/nappyevent[?type=...]` — Delete last nappy (optionally filtered by type)
+- `GET /stats/feedevents?period=...` — Feed stats
+- `GET /stats/nappyevents?period=...&type=...` — Nappy stats
 
 > The server normalises timestamps to **UTC**; sending `ts: null` means “use server time now”.
 
 ### Example Usage
 ```bash
-# Log a 4oz bottle (Lambda does oz→ml conversion; shown here as ml)
-curl -X POST https://babylog-api.<your-domain>.com/feeds   -H "Authorization: Bearer ${API_KEY}" -H "Content-Type: application/json"   -d '{"type":"bottle","volume_ml":118,"notes":"expressed","ts":null}'
+# Log a 4oz bottle (Lambda converts oz → ml in normal voice use; shown here as ml)
+curl -X POST https://babylog-api.<your-domain>.com/log/feedevent \
+  -H "x-api-key: ${API_KEY}" -H "Content-Type: application/json" \
+  -d '{"type":"bottle","volume_ml":118,"notes":"expressed","ts":null}'
 
 # Log a left-side breast feed for 15 minutes
-curl -X POST https://babylog-api.<your-domain>.com/feeds   -H "Authorization: Bearer ${API_KEY}" -H "Content-Type: application/json"   -d '{"type":"breast","side":"left","duration_min":15,"ts":null}'
+curl -X POST https://babylog-api.<your-domain>.com/log/feedevent \
+  -H "x-api-key: ${API_KEY}" -H "Content-Type: application/json" \
+  -d '{"type":"breast","side":"left","duration_min":15,"ts":null}'
 
 # Log a poo nappy with note
-curl -X POST https://babylog-api.<your-domain>.com/nappies   -H "Authorization: Bearer ${API_KEY}" -H "Content-Type: application/json"   -d '{"type":"poo","notes":"messy","ts":null}'
+curl -X POST https://babylog-api.<your-domain>.com/log/nappyevent \
+  -H "x-api-key: ${API_KEY}" -H "Content-Type: application/json" \
+  -d '{"type":"poo","notes":"messy","ts":null}'
 
 # Latest feed
-curl -H "Authorization: Bearer ${API_KEY}" https://babylog-api.<your-domain>.com/feeds/last
+curl -H "x-api-key: ${API_KEY}" https://babylog-api.<your-domain>.com/last/feedevent
 
 # Stats (today)
-curl -H "Authorization: Bearer ${API_KEY}" "https://babylog-api.<your-domain>.com/stats?period=today"
+curl -H "x-api-key: ${API_KEY}" "https://babylog-api.<your-domain>.com/stats/feedevents?period=today"
 ```
 
 ---
@@ -201,7 +267,3 @@ curl -H "Authorization: Bearer ${API_KEY}" "https://babylog-api.<your-domain>.co
 - **Lambda times out** → Verify `BABYLOG_BASE_URL`, DNS, and NPM SSL. Increase Lambda timeout to ~8–10s if needed.
 - **Unit tests can’t import `lambda_function`** → ensure `lambda-tests` service sets `PYTHONPATH=/app` and `alexa-integration/lambda_function.py` exists.
 - **Metabase can’t connect** → DB host should be `db`, port `5432` (inside Docker network).
-
----
-
-Happy logging 👶🍼

@@ -4,6 +4,20 @@
       "invocationName": "baby log",
       "intents": [
         {
+          "name": "LogFeedGenericIntent",
+          "slots": [
+            { "name": "type", "type": "FEED_TYPE" }
+          ],
+            "samples": [
+              "log a feed",
+              "i've done a feed now",
+              "we just fed",
+              "add a feed",
+              "record a feed",
+              "log a {type} feed"
+            ]
+        },
+        {
           "name": "LogBottleFeedIntent",
           "slots": [
             { "name": "volume_value", "type": "AMAZON.NUMBER" },
@@ -47,6 +61,11 @@
             "log a {type} nappy",
             "{type} nappy",
             "log a nappy",
+            "add a nappy",
+            "add a poo",
+            "add a number two",
+            "add a nappy with {type}",
+            "add a nappy with number two",
             "nappy with {notes}",
             "record a {type} nappy"
           ]
@@ -62,7 +81,20 @@
           ]
         },
         {
-          "name": "StatsIntent",
+          "name": "LastNappyIntent",
+          "slots": [
+            { "name": "type", "type": "NAPPY_TYPE" }
+          ],
+          "samples": [
+            "when was the last {type} nappy",
+            "when was the last poo",
+            "last pee nappy",
+            "when was the last nappy",
+            "last nappy"
+          ]
+        },
+        {
+          "name": "StatsFeedsIntent",
           "slots": [
             { "name": "period", "type": "AMAZON.SearchQuery" }
           ],
@@ -71,7 +103,52 @@
             "how many feeds {period}",
             "stats {period}",
             "feeds {period}",
-            "how many feeds today"
+            "how many feeds today",
+            "how many feeds in the last seven days"
+          ]
+        },
+        {
+          "name": "StatsNappiesIntent",
+          "slots": [
+            { "name": "type", "type": "NAPPY_TYPE" },
+            { "name": "period", "type": "AMAZON.SearchQuery" }
+          ],
+          "samples": [
+            "how many {type} nappies {period}",
+            "how many poos {period}",
+            "nappy stats {period}",
+            "how many nappies {period}",
+            "poo stats {period}"
+          ]
+        },
+        {
+          "name": "DeleteLastFeedIntent",
+          "samples": [
+            "delete the last feed",
+            "undo last feed",
+            "remove last feed"
+          ]
+        },
+        {
+          "name": "DeleteLastNappyIntent",
+          "slots": [
+            { "name": "type", "type": "NAPPY_TYPE" }
+          ],
+          "samples": [
+            "delete the last nappy",
+            "delete the last {type} nappy",
+            "undo last nappy",
+            "remove last nappy"
+          ]
+        },
+        {
+          "name": "ClearAllDataIntent",
+          "samples": [
+            "clear all data",
+            "wipe everything",
+            "reset the database",
+            "truncate all tables",
+            "remove all data"
           ]
         },
         { "name": "AMAZON.YesIntent", "samples": [] },
@@ -82,6 +159,13 @@
         { "name": "AMAZON.FallbackIntent", "samples": [] }
       ],
       "types": [
+        {
+          "name": "FEED_TYPE",
+          "values": [
+            { "name": { "value": "bottle" } },
+            { "name": { "value": "breast" } }
+          ]
+        },
         {
           "name": "SIDE",
           "values": [
@@ -100,7 +184,7 @@
             {
               "name": { "value": "poo" },
               "id": "poo",
-              "synonyms": ["number two", "number 2", "poop", "pooh", "stool", "faeces"]
+              "synonyms": ["number two", "number 2", "poop", "pooh", "stool", "faeces", "feces"]
             }
           ]
         },
