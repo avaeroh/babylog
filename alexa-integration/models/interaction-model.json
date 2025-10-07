@@ -11,26 +11,6 @@
               "type": "FEED_TYPE"
             },
             {
-              "name": "volume_value",
-              "type": "AMAZON.NUMBER"
-            },
-            {
-              "name": "volume_unit",
-              "type": "VOLUME_UNIT"
-            },
-            {
-              "name": "side",
-              "type": "SIDE"
-            },
-            {
-              "name": "duration_value",
-              "type": "AMAZON.NUMBER"
-            },
-            {
-              "name": "duration_unit",
-              "type": "DURATION_UNIT"
-            },
-            {
               "name": "notes",
               "type": "AMAZON.SearchQuery"
             }
@@ -120,10 +100,11 @@
             "record a {type} nappy",
             "log a nappy",
             "add a nappy event",
-            "add a poo",
             "add a number two",
             "add a number one",
-            "nappy with {notes}"
+            "nappy with {notes}",
+            "log a pee or poo",
+            "log a number one or number two"
           ]
         },
         {
@@ -162,7 +143,7 @@
           "slots": [
             {
               "name": "period",
-              "type": "AMAZON.SearchQuery"
+              "type": "PERIOD"
             }
           ],
           "samples": [
@@ -171,6 +152,70 @@
             "stats {period}",
             "feeds {period}",
             "how many feeds today"
+          ]
+        },
+        {
+          "name": "StatsNappyIntent",
+          "slots": [
+            {
+              "name": "period",
+              "type": "PERIOD"
+            },
+            {
+              "name": "type",
+              "type": "NAPPY_TYPE"
+            }
+          ],
+          "samples": [
+            "nappy stats",
+            "nappy stats for {period}",
+            "what are the nappy events over the last {period}",
+            "how many nappies {period}",
+            "how many {type} nappies",
+            "how many {type} nappies {period}",
+            "how many number two nappies {period}",
+            "how many number one nappies {period}"
+          ]
+        },
+        {
+          "name": "StatsOverviewIntent",
+          "slots": [
+            {
+              "name": "period",
+              "type": "PERIOD"
+            }
+          ],
+          "samples": [
+            "what are the most recent events",
+            "talk to me about events",
+            "overall stats",
+            "overall stats {period}",
+            "talk to me about feed events"
+          ]
+        },
+        {
+          "name": "DeleteLastFeedIntent",
+          "samples": [
+            "delete last feed",
+            "undo last feed",
+            "remove the last feed"
+          ]
+        },
+        {
+          "name": "DeleteLastNappyIntent",
+          "slots": [
+            {
+              "name": "type",
+              "type": "NAPPY_TYPE"
+            }
+          ],
+          "samples": [
+            "delete last nappy",
+            "delete last {type} nappy",
+            "delete last number two",
+            "delete last number one",
+            "undo last nappy",
+            "remove the last nappy"
           ]
         },
         {
@@ -196,50 +241,6 @@
         {
           "name": "AMAZON.FallbackIntent",
           "samples": []
-        },
-        {
-          "interactionModel": {
-            "languageModel": {
-              "intents": [
-                {
-                  "name": "StatsNappyIntent",
-                  "slots": [
-                    {
-                      "name": "period",
-                      "type": "AMAZON.SearchQuery"
-                    },
-                    {
-                      "name": "type",
-                      "type": "NAPPY_TYPE"
-                    }
-                  ],
-                  "samples": [
-                    "nappy stats",
-                    "nappy stats for {period}",
-                    "what are the nappy events over the last {period}",
-                    "how many nappies {period}",
-                    "how many {type} nappies {period}"
-                  ]
-                },
-                {
-                  "name": "StatsOverviewIntent",
-                  "slots": [
-                    {
-                      "name": "period",
-                      "type": "AMAZON.SearchQuery"
-                    }
-                  ],
-                  "samples": [
-                    "what are the most recent events",
-                    "talk to me about events",
-                    "overall stats",
-                    "overall stats {period}",
-                    "talk to me about feed events"
-                  ]
-                }
-              ]
-            }
-          }
         }
       ],
       "types": [
@@ -359,6 +360,99 @@
               ]
             }
           ]
+        },
+        {
+          "name": "PERIOD",
+          "values": [
+            {
+              "name": {
+                "value": "today"
+              },
+              "id": "today",
+              "synonyms": [
+                "so far today",
+                "since midnight",
+                "earlier today"
+              ]
+            },
+            {
+              "name": {
+                "value": "yesterday"
+              },
+              "id": "yesterday",
+              "synonyms": [
+                "yday",
+                "the previous day"
+              ]
+            },
+            {
+              "name": {
+                "value": "last 24 hours"
+              },
+              "id": "last-24-hours",
+              "synonyms": [
+                "past 24 hours",
+                "in the last 24 hours",
+                "last day",
+                "past day"
+              ]
+            },
+            {
+              "name": {
+                "value": "last 7 days"
+              },
+              "id": "last-7-days",
+              "synonyms": [
+                "past 7 days",
+                "last week",
+                "past week",
+                "in the last week",
+                "over the last week",
+                "last seven days"
+              ]
+            },
+            {
+              "name": {
+                "value": "this week"
+              },
+              "id": "this-week",
+              "synonyms": [
+                "current week",
+                "so far this week"
+              ]
+            },
+            {
+              "name": "last week"
+            },
+            {
+              "name": {
+                "value": "last week"
+              },
+              "id": "last-week",
+              "synonyms": [
+                "previous week"
+              ]
+            },
+            {
+              "name": {
+                "value": "this month"
+              },
+              "id": "this-month",
+              "synonyms": [
+                "current month",
+                "so far this month"
+              ]
+            },
+            {
+              "name": {
+                "value": "last month"
+              },
+              "id": "last-month",
+              "synonyms": [
+                "previous month"
+              ]
+            }
+          ]
         }
       ]
     },
@@ -366,231 +460,22 @@
       "delegationStrategy": "SKILL_RESPONSE",
       "intents": [
         {
-          "name": "LogFeedIntent",
-          "confirmationRequired": true,
-          "prompts": {
-            "confirmation": "Confirm.LogFeed"
-          },
-          "slots": [
-            {
-              "name": "feed_type",
-              "type": "FEED_TYPE",
-              "elicitationRequired": true,
-              "prompts": {
-                "elicitation": "Elicit.FeedType"
-              }
-            },
-            {
-              "name": "volume_value",
-              "type": "AMAZON.NUMBER",
-              "elicitationRequired": false
-            },
-            {
-              "name": "volume_unit",
-              "type": "VOLUME_UNIT",
-              "elicitationRequired": false
-            },
-            {
-              "name": "side",
-              "type": "SIDE",
-              "elicitationRequired": false,
-              "prompts": {
-                "elicitation": "Elicit.Side"
-              }
-            },
-            {
-              "name": "duration_value",
-              "type": "AMAZON.NUMBER",
-              "elicitationRequired": false
-            },
-            {
-              "name": "duration_unit",
-              "type": "DURATION_UNIT",
-              "elicitationRequired": false
-            },
-            {
-              "name": "notes",
-              "type": "AMAZON.SearchQuery",
-              "elicitationRequired": false,
-              "prompts": {
-                "elicitation": "Elicit.Notes"
-              }
-            }
-          ]
+          "name": "LogFeedIntent"
         },
         {
-          "name": "LogBottleFeedIntent",
-          "confirmationRequired": true,
-          "prompts": {
-            "confirmation": "Confirm.LogBottle"
-          },
-          "slots": [
-            {
-              "name": "volume_value",
-              "type": "AMAZON.NUMBER",
-              "elicitationRequired": false
-            },
-            {
-              "name": "volume_unit",
-              "type": "VOLUME_UNIT",
-              "elicitationRequired": false
-            },
-            {
-              "name": "notes",
-              "type": "AMAZON.SearchQuery",
-              "elicitationRequired": false,
-              "prompts": {
-                "elicitation": "Elicit.Notes"
-              }
-            }
-          ]
+          "name": "LogBottleFeedIntent"
         },
         {
-          "name": "LogBreastFeedIntent",
-          "confirmationRequired": true,
-          "prompts": {
-            "confirmation": "Confirm.LogBreast"
-          },
-          "slots": [
-            {
-              "name": "side",
-              "type": "SIDE",
-              "elicitationRequired": true,
-              "prompts": {
-                "elicitation": "Elicit.Side"
-              }
-            },
-            {
-              "name": "duration_value",
-              "type": "AMAZON.NUMBER",
-              "elicitationRequired": false
-            },
-            {
-              "name": "duration_unit",
-              "type": "DURATION_UNIT",
-              "elicitationRequired": false
-            },
-            {
-              "name": "notes",
-              "type": "AMAZON.SearchQuery",
-              "elicitationRequired": false,
-              "prompts": {
-                "elicitation": "Elicit.Notes"
-              }
-            }
-          ]
+          "name": "LogBreastFeedIntent"
         },
         {
-          "name": "LogNappyIntent",
-          "confirmationRequired": true,
-          "prompts": {
-            "confirmation": "Confirm.LogNappy"
-          },
-          "slots": [
-            {
-              "name": "type",
-              "type": "NAPPY_TYPE",
-              "elicitationRequired": true,
-              "prompts": {
-                "elicitation": "Elicit.NappyType"
-              }
-            },
-            {
-              "name": "notes",
-              "type": "AMAZON.SearchQuery",
-              "elicitationRequired": false,
-              "prompts": {
-                "elicitation": "Elicit.Notes"
-              }
-            }
-          ]
+          "name": "LogNappyIntent"
         },
         {
-          "name": "LastNappyIntent",
-          "confirmationRequired": false,
-          "slots": [
-            {
-              "name": "type",
-              "type": "NAPPY_TYPE",
-              "elicitationRequired": false
-            }
-          ]
+          "name": "LastNappyIntent"
         }
       ]
     },
-    "prompts": [
-      {
-        "id": "Elicit.FeedType",
-        "variations": [
-          {
-            "type": "PlainText",
-            "value": "Bottle or breast?"
-          }
-        ]
-      },
-      {
-        "id": "Elicit.Side",
-        "variations": [
-          {
-            "type": "PlainText",
-            "value": "Left or right side?"
-          }
-        ]
-      },
-      {
-        "id": "Elicit.NappyType",
-        "variations": [
-          {
-            "type": "PlainText",
-            "value": "Was it pee, or poo?"
-          }
-        ]
-      },
-      {
-        "id": "Elicit.Notes",
-        "variations": [
-          {
-            "type": "PlainText",
-            "value": "Any notes?"
-          }
-        ]
-      },
-      {
-        "id": "Confirm.LogFeed",
-        "variations": [
-          {
-            "type": "PlainText",
-            "value": "You're about to log a {feed_type} feed. Shall I save it?"
-          }
-        ]
-      },
-      {
-        "id": "Confirm.LogBottle",
-        "variations": [
-          {
-            "type": "PlainText",
-            "value": "You're about to log a bottle feed {volume_value} {volume_unit} {notes}. Shall I save it?"
-          }
-        ]
-      },
-      {
-        "id": "Confirm.LogBreast",
-        "variations": [
-          {
-            "type": "PlainText",
-            "value": "You're about to log a breast feed on the {side} {duration_value} {duration_unit} {notes}. Shall I save it?"
-          }
-        ]
-      },
-      {
-        "id": "Confirm.LogNappy",
-        "variations": [
-          {
-            "type": "PlainText",
-            "value": "You're about to log a nappy event with type {type} {notes}. Shall I save it?"
-          }
-        ]
-      }
-    ]
+    "prompts": []
   }
 }
