@@ -219,28 +219,22 @@
           ]
         },
         {
-          "name": "AMAZON.YesIntent",
-          "samples": []
+          "name": "AMAZON.YesIntent"
         },
         {
-          "name": "AMAZON.NoIntent",
-          "samples": []
+          "name": "AMAZON.NoIntent"
         },
         {
-          "name": "AMAZON.HelpIntent",
-          "samples": []
+          "name": "AMAZON.HelpIntent"
         },
         {
-          "name": "AMAZON.CancelIntent",
-          "samples": []
+          "name": "AMAZON.CancelIntent"
         },
         {
-          "name": "AMAZON.StopIntent",
-          "samples": []
+          "name": "AMAZON.StopIntent"
         },
         {
-          "name": "AMAZON.FallbackIntent",
-          "samples": []
+          "name": "AMAZON.FallbackIntent"
         }
       ],
       "types": [
@@ -420,9 +414,6 @@
                 "current week",
                 "so far this week"
               ]
-            },
-            {
-              "name": "last week"
             },
             {
               "name": {

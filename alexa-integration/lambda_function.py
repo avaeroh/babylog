@@ -31,6 +31,7 @@ from ask_sdk_core.dispatch_components import AbstractRequestHandler
 from ask_sdk_core.utils import is_request_type, is_intent_name
 from ask_sdk_model import Response  # noqa: F401  (type hints)
 from ask_sdk_model.dialog import ElicitSlotDirective, ConfirmIntentDirective
+from ask_sdk_model.ui import SimpleCard  # <-- NEW for cards
 
 # ----------------- CONFIG -----------------
 BASE = os.getenv("BABYLOG_BASE_URL", "https://babylog-api.example.com").rstrip("/")
@@ -39,7 +40,7 @@ TIMEOUT_S = float(os.getenv("HTTP_TIMEOUT_S", "6"))
 RETRY = int(os.getenv("HTTP_RETRIES", "1"))
 
 OZ_TO_ML = 29.5735
-DEFAULT_PERIOD = "last 7 days"  # <— NEW: default period when not specified
+DEFAULT_PERIOD = "last 7 days"  # default period when not specified
 
 # ---------- HTTP ----------
 def _http(method: str, path: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -154,7 +155,7 @@ def normalise_nappy(raw_value: Optional[str], resolved_id: Optional[str]) -> Opt
     return None
 
 def mentions_both_types(raw_value: Optional[str]) -> bool:
-    """Return True if the phrase clearly mentions both types, e.g., 'pee or poo' / 'number one or number two'."""
+    """Return True if the phrase clearly mentions both types (e.g., 'pee or poo')."""
     if not raw_value:
         return False
     t = raw_value.strip().lower()
@@ -273,6 +274,13 @@ class LogFeedIntentHandler(AbstractRequestHandler):
             payload = {"type": "bottle", "volume_ml": volume_ml, "notes": notes, "ts": None}
             try:
                 _http("POST", "/log/feedevent", payload)
+                # Card
+                lines = [f"Saved bottle"]
+                if volume_ml is not None:
+                    lines.append(f"Volume: {volume_ml} ml")
+                if notes:
+                    lines.append(f"Notes: {notes}")
+                handler_input.response_builder.set_card(SimpleCard(title="Baby Log", content="\n".join(lines)))
                 return handler_input.response_builder.speak("Saved your bottle feed.").response
             except Exception:
                 return handler_input.response_builder.speak("Sorry, I couldn't reach the baby log API.").response
@@ -311,6 +319,14 @@ class LogFeedIntentHandler(AbstractRequestHandler):
         payload = {"type": "breast", "side": side, "duration_min": duration_min, "notes": notes, "ts": None}
         try:
             _http("POST", "/log/feedevent", payload)
+            # Card
+            lines = [f"Saved breast feed"]
+            lines.append(f"Side: {side}")
+            if duration_min is not None:
+                lines.append(f"Duration: {duration_min} min")
+            if notes:
+                lines.append(f"Notes: {notes}")
+            handler_input.response_builder.set_card(SimpleCard(title="Baby Log", content="\n".join(lines)))
             return handler_input.response_builder.speak("Saved your breast feed.").response
         except Exception:
             return handler_input.response_builder.speak("Sorry, I couldn't reach the baby log API.").response
@@ -347,6 +363,13 @@ class LogBottleFeedIntentHandler(AbstractRequestHandler):
         payload = {"type": "bottle", "volume_ml": volume_ml, "notes": notes, "ts": None}
         try:
             _http("POST", "/log/feedevent", payload)
+            # Card
+            lines = [f"Saved bottle"]
+            if volume_ml is not None:
+                lines.append(f"Volume: {volume_ml} ml")
+            if notes:
+                lines.append(f"Notes: {notes}")
+            handler_input.response_builder.set_card(SimpleCard(title="Baby Log", content="\n".join(lines)))
             return handler_input.response_builder.speak("Saved your bottle feed.").response
         except Exception:
             return handler_input.response_builder.speak("Sorry, I couldn't reach the baby log API.").response
@@ -395,6 +418,14 @@ class LogBreastFeedIntentHandler(AbstractRequestHandler):
         payload = {"type": "breast", "side": side, "duration_min": duration_min, "notes": notes, "ts": None}
         try:
             _http("POST", "/log/feedevent", payload)
+            # Card
+            lines = [f"Saved breast feed"]
+            lines.append(f"Side: {side}")
+            if duration_min is not None:
+                lines.append(f"Duration: {duration_min} min")
+            if notes:
+                lines.append(f"Notes: {notes}")
+            handler_input.response_builder.set_card(SimpleCard(title="Baby Log", content="\n".join(lines)))
             return handler_input.response_builder.speak("Saved your breast feed.").response
         except Exception:
             return handler_input.response_builder.speak("Sorry, I couldn't reach the baby log API.").response
@@ -444,6 +475,11 @@ class LogNappyIntentHandler(AbstractRequestHandler):
         payload = {"type": norm, "notes": notes, "ts": None}
         try:
             _http("POST", "/log/nappyevent", payload)
+            # Card
+            lines = [f"Saved nappy: {say_nappy_type(norm)}"]
+            if notes:
+                lines.append(f"Notes: {notes}")
+            handler_input.response_builder.set_card(SimpleCard(title="Baby Log", content="\n".join(lines)))
             return handler_input.response_builder.speak("Saved your nappy event.").response
         except Exception:
             return handler_input.response_builder.speak("Sorry, I couldn't reach the baby log API.").response
@@ -493,7 +529,7 @@ class StatsIntentHandler(AbstractRequestHandler):
         return is_intent_name("StatsIntent")(handler_input)
 
     def handle(self, handler_input):
-        period = get_slot_value(handler_input, "period") or DEFAULT_PERIOD  # <— NEW default
+        period = get_slot_value(handler_input, "period") or DEFAULT_PERIOD
         try:
             q = urllib.parse.quote(period)
             stats = _http("GET", f"/stats/feedevents?period={q}")
@@ -508,7 +544,7 @@ class StatsNappyIntentHandler(AbstractRequestHandler):
         return is_intent_name("StatsNappyIntent")(handler_input)
 
     def handle(self, handler_input):
-        period = get_slot_value(handler_input, "period") or DEFAULT_PERIOD  # <— NEW default
+        period = get_slot_value(handler_input, "period") or DEFAULT_PERIOD
         raw = get_slot_value(handler_input, "type")
         rid = get_slot_resolution_id(handler_input, "type")
         norm = normalise_nappy(raw, rid)
@@ -532,8 +568,7 @@ class StatsOverviewIntentHandler(AbstractRequestHandler):
         return is_intent_name("StatsOverviewIntent")(handler_input)
 
     def handle(self, handler_input):
-        period = get_slot_value(handler_input, "period") or DEFAULT_PERIOD  # <— NEW default
-        # Best-effort rollup using only documented endpoints
+        period = get_slot_value(handler_input, "period") or DEFAULT_PERIOD
         try:
             feed_stats = _http("GET", f"/stats/feedevents?period={urllib.parse.quote(period)}")
             nappy_stats = _http("GET", f"/stats/nappyevents?period={urllib.parse.quote(period)}")
@@ -575,6 +610,8 @@ class DeleteLastFeedIntentHandler(AbstractRequestHandler):
             return handler_input.response_builder.speak("Okay, I won't delete it.").response
         try:
             _http("DELETE", "/last/feedevent")
+            # Card
+            handler_input.response_builder.set_card(SimpleCard(title="Baby Log", content="Deleted last feed"))
             return handler_input.response_builder.speak("Deleted the last feed.").response
         except Exception:
             return handler_input.response_builder.speak("Sorry, I couldn't delete the last feed.").response
@@ -609,6 +646,11 @@ class DeleteLastNappyIntentHandler(AbstractRequestHandler):
         q = f"?type={norm}" if norm in ("pee", "poo") else ""
         try:
             _http("DELETE", f"/last/nappyevent{q}")
+            # Card
+            msg = "Deleted last nappy"
+            if norm in ("pee", "poo"):
+                msg = f"Deleted last {say_nappy_type(norm)} nappy"
+            handler_input.response_builder.set_card(SimpleCard(title="Baby Log", content=msg))
             return handler_input.response_builder.speak("Deleted the last nappy.").response
         except Exception:
             return handler_input.response_builder.speak("Sorry, I couldn't delete the last nappy.").response
