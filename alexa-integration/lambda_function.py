@@ -222,6 +222,19 @@ def say_nappy_type(t: Optional[str]) -> str:
         return "number two"
     return "nappy"
 
+# ---------- Notes normalization helper ----------
+def normalize_notes(val: Optional[str]) -> Optional[str]:
+    """
+    Treat common negative responses as 'no notes'.
+    Leaves other content untouched (including freeform dictation).
+    """
+    if not val:
+        return None
+    t = val.strip().lower()
+    if t in {"no", "nope", "none", "nothing", "no notes", "nah"}:
+        return None
+    return val.strip()
+
 # ---------- Handlers ----------
 class LaunchHandler(AbstractRequestHandler):
     def can_handle(self, handler_input):
@@ -233,47 +246,24 @@ class LaunchHandler(AbstractRequestHandler):
 class HelpHandler(AbstractRequestHandler):
     def can_handle(self, handler_input):
         return is_intent_name("AMAZON.HelpIntent")(handler_input)
-
     def handle(self, handler_input):
         speak = (
-            "Here’s how I work. "
-            "For feeds, say one of these: "
-            "log a bottle — you can include the amount, for example one hundred and twenty millilitres; "
-            "or log a breast feed — say left or right, and you can add the duration, for example ten minutes. "
-            "If you’re not sure, say log a feed and I’ll ask whether it was bottle or breast. "
-            "You can add notes to any log by saying with notes. "
-
-            "For nappies, say add a nappy, and tell me number one or number two. "
-            "You can also say wet nappy or dirty nappy. "
-
-            "To check recents, ask when was the last feed, or when was the last nappy — "
-            "you can say last number two or last wet nappy. "
-
-            "For stats, say how many feeds today, or how many nappies last seven days. "
-            "If you just say stats, I’ll give you an overview. "
+            "You can log feeds and nappies, check the last event, get stats, or undo the last entry. "
+            "For feeds: say, log a bottle — volume is optional; or log a breast feed — left or right is required, duration is optional. "
+            "You can add notes to any log. "
+            "For nappies: say, add a nappy and tell me number one or number two. "
+            "Ask, when was the last feed, or, when was the last nappy — you can say latest nappy. "
+            "For stats, say: how many feeds today, or nappies last seven days. "
             "If you don’t specify a period, I’ll use the last seven days. "
-
-            "To undo, say delete last feed, or delete last number one. "
-
-            "You can also say repeat that, or start over, at any time. "
-            "What would you like to do?"
+            "To undo, say: delete last feed, or delete last number one."
         )
         return handler_input.response_builder.speak(speak).ask("What would you like to do?").response
-
 
 class FallbackHandler(AbstractRequestHandler):
     def can_handle(self, handler_input):
         return is_intent_name("AMAZON.FallbackIntent")(handler_input)
-
     def handle(self, handler_input):
-        speak = (
-            "Sorry, I didn’t catch that. "
-            "Try: log a bottle one hundred and twenty millilitres, "
-            "log a breast feed left for ten minutes, "
-            "add a nappy, "
-            "stats, or delete last feed. "
-            "If you’re unsure, say log a feed and I’ll ask for the type."
-        )
+        speak = "Sorry, I didn’t get that. You can say, log a feed, add a number one, or ask for stats."
         return handler_input.response_builder.speak(speak).ask("What would you like to do?").response
 
 class SessionEndedHandler(AbstractRequestHandler):
@@ -288,12 +278,18 @@ class LogFeedIntentHandler(AbstractRequestHandler):
     def handle(self, handler_input):
         conf = intent_confirmed(handler_input)
         feed_type = (get_slot_value(handler_input, "feed_type") or "").lower() or None
-        notes = get_slot_value(handler_input, "notes")
+        notes = normalize_notes(get_slot_value(handler_input, "notes"))
 
         if not feed_type or feed_type not in ("bottle", "breast"):
             prompt = "Bottle or breast?"
             return handler_input.response_builder.speak(prompt).ask(prompt)\
                 .add_directive(ElicitSlotDirective(slot_to_elicit="feed_type")).response
+
+        # Ask for notes before confirmation if we have the type but no notes yet.
+        if conf is None and notes is None:
+            prompt = "Do you have any notes to add? You can say no."
+            return handler_input.response_builder.speak(prompt).ask(prompt)\
+                .add_directive(ElicitSlotDirective(slot_to_elicit="notes")).response
 
         if feed_type == "bottle":
             volume_ml = parse_volume(get_slot_value(handler_input, "volume_value"),
@@ -330,11 +326,17 @@ class LogFeedIntentHandler(AbstractRequestHandler):
             return handler_input.response_builder.speak(prompt).ask(prompt)\
                 .add_directive(ElicitSlotDirective(slot_to_elicit="side")).response
 
+        # Ask for notes before confirmation once side is known.
+        if conf is None and notes is None:
+            prompt = "Do you have any notes to add? You can say no."
+            return handler_input.response_builder.speak(prompt).ask(prompt)\
+                .add_directive(ElicitSlotDirective(slot_to_elicit="notes")).response
+
         if conf is None:
             summary = f"You're about to log a breast feed on the {side} side"
             if duration_min is not None:
                 summary += f" for {duration_min} minutes"
-            notes = get_slot_value(handler_input, "notes")
+            notes = normalize_notes(get_slot_value(handler_input, "notes"))
             if notes:
                 summary += f", notes: {notes}"
             summary += ". Shall I save it?"
@@ -360,10 +362,16 @@ class LogBottleFeedIntentHandler(AbstractRequestHandler):
         return is_intent_name("LogBottleFeedIntent")(handler_input)
     def handle(self, handler_input):
         conf = intent_confirmed(handler_input)
-        notes = get_slot_value(handler_input, "notes")
+        notes = normalize_notes(get_slot_value(handler_input, "notes"))
         volume_value = get_slot_value(handler_input, "volume_value")
         volume_unit = get_slot_value(handler_input, "volume_unit")
         volume_ml = parse_volume(volume_value, volume_unit)
+
+        # Ask for notes once we have enough info, before confirmation.
+        if conf is None and volume_ml is not None and notes is None:
+            prompt = "Do you have any notes to add? You can say no."
+            return handler_input.response_builder.speak(prompt).ask(prompt)\
+                .add_directive(ElicitSlotDirective(slot_to_elicit="notes")).response
 
         if conf is None:
             summary = "You're about to log a bottle feed"
@@ -396,7 +404,7 @@ class LogBreastFeedIntentHandler(AbstractRequestHandler):
         side = (get_slot_value(handler_input, "side") or "").lower() or None
         duration_min = parse_duration(get_slot_value(handler_input, "duration_value"),
                                       get_slot_value(handler_input, "duration_unit"))
-        notes = get_slot_value(handler_input, "notes")
+        notes = normalize_notes(get_slot_value(handler_input, "notes"))
 
         if not side or side not in ("left", "right"):
             prompt = "Left or right side?"
@@ -404,6 +412,13 @@ class LogBreastFeedIntentHandler(AbstractRequestHandler):
                 .add_directive(ElicitSlotDirective(slot_to_elicit="side")).response
 
         conf = intent_confirmed(handler_input)
+
+        # Ask for notes before confirmation.
+        if conf is None and notes is None:
+            prompt = "Do you have any notes to add? You can say no."
+            return handler_input.response_builder.speak(prompt).ask(prompt)\
+                .add_directive(ElicitSlotDirective(slot_to_elicit="notes")).response
+
         if conf is None:
             summary = f"You're about to log a breast feed on the {side} side"
             if duration_min is not None:
@@ -435,7 +450,7 @@ class LogNappyIntentHandler(AbstractRequestHandler):
         raw = get_slot_value(handler_input, "type")
         rid = get_slot_resolution_id(handler_input, "type")
         norm = normalise_nappy(raw, rid)
-        notes = get_slot_value(handler_input, "notes")
+        notes = normalize_notes(get_slot_value(handler_input, "notes"))
 
         if not norm:
             prompt = "Got it — a nappy event. Was it a number one or a number two?" if mentions_both_types(raw) \
@@ -444,6 +459,13 @@ class LogNappyIntentHandler(AbstractRequestHandler):
                 .add_directive(ElicitSlotDirective(slot_to_elicit="type")).response
 
         conf = intent_confirmed(handler_input)
+
+        # Ask for notes before confirmation.
+        if conf is None and notes is None:
+            prompt = "Do you have any notes to add? You can say no."
+            return handler_input.response_builder.speak(prompt).ask(prompt)\
+                .add_directive(ElicitSlotDirective(slot_to_elicit="notes")).response
+
         if conf is None:
             label = say_nappy_type(norm)
             summary = f"You're about to log a nappy event: {label}."

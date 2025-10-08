@@ -4,6 +4,30 @@
       "invocationName": "baby log",
       "intents": [
         {
+          "name": "LogFeedIntent",
+          "slots": [
+            {
+              "name": "feed_type",
+              "type": "FEED_TYPE"
+            },
+            {
+              "name": "notes",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "log a feed",
+            "add a feed",
+            "record a feed",
+            "we've just done a feed",
+            "we did a feed",
+            "log a {feed_type} feed",
+            "add a {feed_type} feed",
+            "log a feed with {notes}",
+            "add a feed with {notes}"
+          ]
+        },
+        {
           "name": "LogBottleFeedIntent",
           "slots": [
             {
@@ -26,9 +50,6 @@
             "log a {volume_value} {volume_unit} bottle",
             "bottle {volume_value} {volume_unit}",
             "bottle {volume_value}",
-            "she took {volume_value} {volume_unit}",
-            "{volume_value} {volume_unit} bottle",
-            "give bottle {volume_value}",
             "bottle with {notes}",
             "log a bottle with {notes}"
           ]
@@ -56,36 +77,11 @@
           "samples": [
             "log a breast feed",
             "add a breast feed",
-            "breast on the {side}",
             "breast {side}",
-            "nurse {side} for {duration_value} {duration_unit}",
             "breast {side} for {duration_value} {duration_unit}",
             "breast for {duration_value} {duration_unit}",
-            "fed on the {side}",
             "breast with {notes}",
             "record a breast feed {side} for {duration_value} {duration_unit}"
-          ]
-        },
-        {
-          "name": "LogFeedIntent",
-          "slots": [
-            {
-              "name": "feed_type",
-              "type": "FEED_TYPE"
-            },
-            {
-              "name": "notes",
-              "type": "AMAZON.SearchQuery"
-            }
-          ],
-          "samples": [
-            "log a feed",
-            "add a feed",
-            "record a feed",
-            "we've just done a feed",
-            "we did a feed",
-            "log a feed with {notes}",
-            "add a feed with {notes}"
           ]
         },
         {
@@ -101,17 +97,17 @@
             }
           ],
           "samples": [
+            "log a {type} nappy",
+            "add a {type} nappy",
+            "record a {type} nappy",
             "log a nappy",
-            "add a nappy",
-            "record a nappy",
             "log a nappy event",
             "add a nappy event",
-            "log a nappy with {notes}",
+            "add a number two",
+            "add a number one",
             "nappy with {notes}",
             "log a pee or poo",
-            "log a number one or number two",
-            "add a wet nappy",
-            "add a dirty nappy"
+            "log a number one or number two"
           ]
         },
         {
@@ -126,9 +122,7 @@
             "latest feed event",
             "last bottle",
             "last feed",
-            "when did baby last feed",
-            "when did baby last have a bottle",
-            "when did baby last have a breast feed"
+            "when did baby last feed"
           ]
         },
         {
@@ -153,9 +147,7 @@
             "last poo",
             "last pee",
             "when was the last number two",
-            "when was the last number one",
-            "when did baby last do a wet nappy",
-            "when did baby last do a dirty nappy"
+            "when was the last number one"
           ]
         },
         {
@@ -169,10 +161,9 @@
           "samples": [
             "feeding stats for {period}",
             "how many feeds {period}",
-            "how many feeds today",
+            "stats {period}",
             "feeds {period}",
-            "feed stats {period}",
-            "number of feeds {period}"
+            "how many feeds today"
           ]
         },
         {
@@ -197,9 +188,7 @@
             "how many {type} nappies",
             "how many {type} nappies {period}",
             "how many number two nappies {period}",
-            "how many number one nappies {period}",
-            "how many wet nappies {period}",
-            "how many dirty nappies {period}"
+            "how many number one nappies {period}"
           ]
         },
         {
@@ -215,9 +204,6 @@
             "talk to me about events",
             "overall stats",
             "overall stats {period}",
-            "stats",
-            "stats {period}",
-            "how many today",
             "talk to me about feed events"
           ]
         },
@@ -227,8 +213,7 @@
             "delete last feed",
             "delete the last feed event",
             "undo last feed",
-            "remove the last feed",
-            "delete the latest feed"
+            "remove the last feed"
           ]
         },
         {
@@ -242,15 +227,13 @@
           "samples": [
             "delete last nappy",
             "delete the last nappy event",
+            "delete last {type} nappy",
+            "delete last number two",
+            "delete last number one",
             "undo last nappy",
             "remove the last nappy",
             "delete the latest nappy",
-            "delete the latest nappy event",
-            "delete the last {type} nappy",
-            "delete last number two",
-            "delete last number one",
-            "delete last wet nappy",
-            "delete last dirty nappy"
+            "delete the latest nappy event"
           ]
         },
         {
@@ -273,18 +256,6 @@
         },
         {
           "name": "AMAZON.NavigateHomeIntent"
-        },
-        {
-          "name": "AMAZON.RepeatIntent"
-        },
-        {
-          "name": "AMAZON.StartOverIntent"
-        },
-        {
-          "name": "AMAZON.NextIntent"
-        },
-        {
-          "name": "AMAZON.PreviousIntent"
         }
       ],
       "types": [
@@ -309,20 +280,12 @@
             {
               "name": {
                 "value": "left"
-              },
-              "synonyms": [
-                "left side",
-                "left breast"
-              ]
+              }
             },
             {
               "name": {
                 "value": "right"
-              },
-              "synonyms": [
-                "right side",
-                "right breast"
-              ]
+              }
             }
           ]
         },
@@ -344,9 +307,7 @@
                 "pees",
                 "wee",
                 "wee wee",
-                "urine",
-                "wet",
-                "wet nappy"
+                "urine"
               ]
             },
             {
@@ -365,12 +326,7 @@
                 "poop",
                 "pooh",
                 "stool",
-                "faeces",
-                "dirty",
-                "dirty nappy",
-                "bm",
-                "blowout",
-                "diaper"
+                "faeces"
               ]
             }
           ]
@@ -387,9 +343,7 @@
                 "millilitre",
                 "ml",
                 "mil",
-                "mills",
-                "milliliters",
-                "milliliter"
+                "mills"
               ]
             },
             {
@@ -444,9 +398,7 @@
               "synonyms": [
                 "so far today",
                 "since midnight",
-                "earlier today",
-                "today so far",
-                "since this morning"
+                "earlier today"
               ]
             },
             {
@@ -468,8 +420,7 @@
                 "past 24 hours",
                 "in the last 24 hours",
                 "last day",
-                "past day",
-                "in the past day"
+                "past day"
               ]
             },
             {
@@ -497,9 +448,7 @@
               ]
             },
             {
-              "name": {
-                "value": "last week"
-              },
+              "name": "last week",
               "id": "last-week",
               "synonyms": [
                 "previous week"
@@ -532,22 +481,19 @@
       "delegationStrategy": "SKILL_RESPONSE",
       "intents": [
         {
+          "name": "LogFeedIntent"
+        },
+        {
           "name": "LogBottleFeedIntent"
         },
         {
           "name": "LogBreastFeedIntent"
         },
         {
-          "name": "LogFeedIntent"
-        },
-        {
           "name": "LogNappyIntent"
         },
         {
-          "name": "DeleteLastFeedIntent"
-        },
-        {
-          "name": "DeleteLastNappyIntent"
+          "name": "LastNappyIntent"
         }
       ]
     },
