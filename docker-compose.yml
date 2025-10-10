@@ -36,7 +36,8 @@ services:
     ports:
       - "5080:5080"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:5080/health >/dev/null || exit 1"]
+      # Updated to versioned health endpoint
+      test: ["CMD-SHELL", "curl -fsS http://localhost:5080/v1/health >/dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -45,6 +46,7 @@ services:
       - default
       - proxy
 
+  # Fast test runner: reuse pip-installed deps layer and mount code/tests
   api-tests:
     build:
       context: ./babylog-api
@@ -54,7 +56,12 @@ services:
       - .env
     environment:
       TESTING: "1"
-    command: ["pytest", "-q"]
+      RESET_ENABLED: "1"   # enable reset endpoint in tests
+      PYTHONPATH: /app
+    volumes:
+      - ./babylog-api/app:/app/app
+      - ./babylog-api/tests:/app/tests
+    command: ["python", "-m", "pytest", "-q"]
 
   adminer:
     image: adminer
@@ -92,10 +99,10 @@ services:
     env_file:
       - .env
     environment:
-      # Unit tests ignore network; integration tests use this base when RUN_LAMBDA_ITESTS=1
+      # Unit tests ignore network; integration tests use this when RUN_LAMBDA_ITESTS=1
       BABYLOG_BASE_URL: http://api:5080
       API_KEY: ${API_KEY}
-      PYTHONPATH: /app  
+      PYTHONPATH: /app
     volumes:
       - ./alexa-integration:/app
     depends_on:

@@ -1,4 +1,3 @@
-# app/adapters/db.py
 from __future__ import annotations
 import os
 import logging
@@ -16,7 +15,6 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 if TESTING:
     logger.info("TESTING mode enabled: using in-memory SQLite DB with StaticPool")
-    # Single in-memory DB shared across the whole process
     DATABASE_URL = "sqlite+pysqlite:///:memory:"
     engine = create_engine(
         DATABASE_URL,

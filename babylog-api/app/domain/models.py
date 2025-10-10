@@ -1,7 +1,8 @@
 from __future__ import annotations
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional, Literal
+from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
+from uuid import UUID
 
 def _ensure_utc(dt: Optional[datetime]) -> datetime:
     if dt is None:
@@ -10,29 +11,37 @@ def _ensure_utc(dt: Optional[datetime]) -> datetime:
         return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
 
-class FeedEventIn(BaseModel):
-    type: Literal["breast", "bottle"]
-    side: Optional[Literal["left", "right"]] = None
-    duration_min: Optional[int] = Field(default=None, ge=0)
-    volume_ml: Optional[int] = Field(default=None, ge=0)
-    notes: Optional[str] = None
+# -----------------------------------------------------------------------------
+# Generic Event models for /v1/events
+# -----------------------------------------------------------------------------
+class EventBase(BaseModel):
     ts: Optional[datetime] = None
+    notes: Optional[str] = None
+    tags: Optional[List[str]] = None
+    metadata: Optional[Dict[str, Any]] = None
 
     @field_validator("ts")
     @classmethod
     def ts_utc(cls, v):
         return _ensure_utc(v)
 
-class NappyEventIn(BaseModel):
-    type: Literal["pee", "poo"]
-    notes: Optional[str] = None
-    ts: Optional[datetime] = None
+class EventIn(EventBase):
+    type: str = Field(..., description="Event type, e.g., 'feeding', 'nappy'.")
 
-    @field_validator("ts")
-    @classmethod
-    def ts_utc(cls, v):
-        return _ensure_utc(v)
+class EventUpdate(EventBase):
+    # All optional, partial updates allowed
+    type: Optional[str] = None
 
+class EventOut(EventIn):
+    id: UUID
+
+class EventListOut(BaseModel):
+    items: list[EventOut]
+    next_cursor: Optional[str] = None
+
+# -----------------------------------------------------------------------------
+# Compatibility outputs
+# -----------------------------------------------------------------------------
 class LastOut(BaseModel):
     ts: datetime
     human: str

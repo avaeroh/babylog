@@ -1,15 +1,17 @@
 from __future__ import annotations
 from datetime import datetime
-from typing import Optional, Callable, TypeVar
+from typing import Optional, Callable, TypeVar, List, Dict, Any, Tuple
 import logging
 import time
 from contextlib import contextmanager
+from uuid import UUID, uuid4
 
-from sqlalchemy import String, Integer, Text, TIMESTAMP, func, select, delete
+from sqlalchemy import String, Text, TIMESTAMP, func, select, delete, update, JSON
 from sqlalchemy.orm import Mapped, mapped_column, Session
+from sqlalchemy.exc import OperationalError
 
 from app.adapters.db import Base, engine, SessionLocal
-from app.domain.ports import FeedRepo, NappyEventRepo
+from app.domain.ports import EventRepo
 
 # -----------------------------------------------------------------------------
 # Logging
@@ -19,7 +21,6 @@ T = TypeVar("T")
 
 @contextmanager
 def _commit_or_rollback(session: Session, op_name: str):
-    """Commit the transaction; rollback and log on exceptions."""
     try:
         yield
         session.commit()
@@ -30,14 +31,12 @@ def _commit_or_rollback(session: Session, op_name: str):
         raise
 
 def _timed(op_name: str) -> Callable[[Callable[..., T]], Callable[..., T]]:
-    """Decorator to time repository operations."""
     def deco(fn: Callable[..., T]) -> Callable[..., T]:
         def wrapped(*args, **kwargs) -> T:
             start = time.perf_counter()
             logger.debug("%s: start args=%s kwargs=%s", op_name, args[1:], kwargs)
             try:
-                result = fn(*args, **kwargs)
-                return result
+                return fn(*args, **kwargs)
             finally:
                 dur_ms = (time.perf_counter() - start) * 1000
                 logger.debug("%s: end (%.2f ms)", op_name, dur_ms)
@@ -45,159 +44,180 @@ def _timed(op_name: str) -> Callable[[Callable[..., T]], Callable[..., T]]:
     return deco
 
 # -----------------------------------------------------------------------------
-# ORM models
+# ORM model (unified events)
 # -----------------------------------------------------------------------------
-class Feed(Base):
-    __tablename__ = "feeds"
-    id: Mapped[int] = mapped_column(primary_key=True)
+class Event(Base):
+    __tablename__ = "events"
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     ts: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
-    type: Mapped[str] = mapped_column(String(10), nullable=False)  # 'breast'|'bottle'
-    side: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # 'left'|'right'
-    duration_min: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    volume_ml: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    type: Mapped[str] = mapped_column(String(32), nullable=False)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-
-
-class NappyEvent(Base):
-    __tablename__ = "nappyevents"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    ts: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
-    type: Mapped[str] = mapped_column(String(10), nullable=False)  # 'pee'|'poo'
-    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    tags: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)
+    # 'metadata' is reserved in SQLAlchemy declarative; map to column "metadata"
+    metadata_json: Mapped[Optional[Dict[str, Any]]] = mapped_column("metadata", JSON, nullable=True)
 
 # -----------------------------------------------------------------------------
-# Bootstrap tables (v1)
+# Bootstrap tables (v2)
 # -----------------------------------------------------------------------------
 def init_db() -> None:
-    logger.info("Initializing database schema for tables: feeds, nappyevents")
+    logger.info("Initializing database schema for table: events")
     Base.metadata.create_all(bind=engine)
     logger.debug("Database schema initialization complete")
 
 # -----------------------------------------------------------------------------
-# Repositories
+# Repository
 # -----------------------------------------------------------------------------
-class SqlFeedRepo(FeedRepo):
+class SqlEventRepo(EventRepo):
     def __init__(self, session: Session):
         self.session = session
-        logger.debug("SqlFeedRepo created with session %s", hex(id(session)))
+        logger.debug("SqlEventRepo created with session %s", hex(id(session)))
 
-    @_timed("Feed.add")
-    def add(self, *, ts: datetime, type: str, side: Optional[str],
-            duration_min: Optional[int], volume_ml: Optional[int],
-            notes: Optional[str]) -> int:
-        logger.info("Adding feed: ts=%s type=%s side=%s duration_min=%s volume_ml=%s",
-                    ts, type, side, duration_min, volume_ml)
-        obj = Feed(ts=ts, type=type, side=side,
-                   duration_min=duration_min, volume_ml=volume_ml, notes=notes)
-        with _commit_or_rollback(self.session, "Feed.add"):
+    @_timed("Event.add")
+    def add(
+        self, *,
+        ts: datetime,
+        type: str,
+        notes: Optional[str],
+        tags: Optional[List[str]],
+        metadata: Optional[Dict[str, Any]],
+    ) -> UUID:
+        logger.info("Adding event: ts=%s type=%s", ts, type)
+        obj = Event(ts=ts, type=type, notes=notes, tags=tags, metadata_json=metadata)
+        with _commit_or_rollback(self.session, "Event.add"):
             self.session.add(obj)
         self.session.refresh(obj)
-        logger.debug("Feed.add: inserted id=%s", obj.id)
+        logger.debug("Event.add: inserted id=%s", obj.id)
         return obj.id
 
-    @_timed("Feed.last")
-    def last(self):
-        stmt = select(Feed).order_by(Feed.id.desc()).limit(1)
-        logger.debug("Feed.last: executing %s", stmt)
+    @_timed("Event.get")
+    def get(self, id: UUID):
+        row = self.session.get(Event, id)
+        if not row:
+            return None
+        return {
+            "id": row.id, "ts": row.ts, "type": row.type,
+            "notes": row.notes, "tags": row.tags, "metadata": row.metadata_json
+        }
+
+    @_timed("Event.list")
+    def list(
+        self, *,
+        type: Optional[str],
+        since: Optional[datetime],
+        until: Optional[datetime],
+        limit: int = 50,
+        cursor: Optional[str] = None,
+        sort_desc: bool = True,
+    ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        stmt = select(Event)
+        if type:
+            stmt = stmt.where(Event.type == type)
+        if since:
+            stmt = stmt.where(Event.ts >= since)
+        if until:
+            stmt = stmt.where(Event.ts <= until)
+
+        if cursor:
+            try:
+                cur_ts = datetime.fromisoformat(cursor)
+                stmt = stmt.where(Event.ts < cur_ts) if sort_desc else stmt.where(Event.ts > cur_ts)
+            except Exception:
+                logger.warning("Invalid cursor %s ignored", cursor)
+
+        order = Event.ts.desc() if sort_desc else Event.ts.asc()
+        stmt = stmt.order_by(order, Event.id.desc()).limit(min(max(limit, 1), 500))
+
+        rows = self.session.execute(stmt).scalars().all()
+        items = [{
+            "id": r.id, "ts": r.ts, "type": r.type,
+            "notes": r.notes, "tags": r.tags, "metadata": r.metadata_json
+        } for r in rows]
+        next_cursor = rows[-1].ts.isoformat() if rows else None
+        return items, next_cursor
+
+    @_timed("Event.last")
+    def last(self, type: Optional[str] = None):
+        stmt = select(Event).order_by(Event.ts.desc(), Event.id.desc()).limit(1)
+        if type:
+            stmt = stmt.where(Event.type == type)
         row = self.session.execute(stmt).scalar_one_or_none()
         if not row:
-            logger.info("Feed.last: no rows found")
+            logger.info("Event.last: no rows found (type=%s)", type)
             return None
-        result = {"ts": row.ts, "data": {
-            "type": row.type, "side": row.side,
-            "duration_min": row.duration_min, "volume_ml": row.volume_ml,
-            "notes": row.notes
+        return {"ts": row.ts, "data": {
+            "id": str(row.id), "type": row.type,
+            "notes": row.notes, "tags": row.tags, "metadata": row.metadata_json
         }}
-        logger.debug("Feed.last: returning %s", result)
-        return result
 
-    @_timed("Feed.stats_since")
-    def stats_since(self, since: datetime) -> dict:
-        logger.info("Feed.stats_since: since=%s", since)
-        count = self.session.execute(
-            select(func.count(Feed.id)).where(Feed.ts >= since)
-        ).scalar_one() or 0
-        total_vol = self.session.execute(
-            select(func.coalesce(func.sum(Feed.volume_ml), 0)).where(Feed.ts >= since)
-        ).scalar_one() or 0
-        total_dur = self.session.execute(
-            select(func.coalesce(func.sum(Feed.duration_min), 0)).where(Feed.ts >= since)
-        ).scalar_one() or 0
-        result = {
-            "count": int(count),
-            "total_volume_ml": int(total_vol),
-            "total_duration_min": int(total_dur),
-        }
-        logger.debug("Feed.stats_since: result=%s", result)
-        return result
+    @_timed("Event.update")
+    def update(
+        self, id: UUID, *,
+        ts: Optional[datetime] = None,
+        type: Optional[str] = None,
+        notes: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ):
+        values: Dict[str, Any] = {}
+        if ts is not None: values["ts"] = ts
+        if type is not None: values["type"] = type
+        if notes is not None: values["notes"] = notes
+        if tags is not None: values["tags"] = tags
+        if metadata is not None: values["metadata_json"] = metadata
+        if not values:
+            return self.get(id)
 
-    @_timed("Feed.delete_last")
-    def delete_last(self) -> bool:
-        logger.info("Feed.delete_last: deleting most recent feed")
-        latest_id = self.session.execute(
-            select(Feed.id).order_by(Feed.id.desc()).limit(1)
-        ).scalar_one_or_none()
-        if latest_id is None:
-            logger.info("Feed.delete_last: nothing to delete")
-            return False
-        with _commit_or_rollback(self.session, "Feed.delete_last"):
-            self.session.execute(delete(Feed).where(Feed.id == latest_id))
-        logger.debug("Feed.delete_last: deleted id=%s", latest_id)
-        return True
+        with _commit_or_rollback(self.session, "Event.update"):
+            try:
+                res = self.session.execute(
+                    update(Event).where(Event.id == id).values(**values).returning(Event)
+                )
+                row = res.fetchone()
+                obj = row[0] if row else None
+            except OperationalError:
+                # Fallback for SQLite builds without RETURNING support
+                self.session.execute(update(Event).where(Event.id == id).values(**values))
+                obj = self.session.get(Event, id)
 
-
-class SqlNappyEventRepo(NappyEventRepo):
-    def __init__(self, session: Session):
-        self.session = session
-        logger.debug("SqlNappyEventRepo created with session %s", hex(id(session)))
-
-    @_timed("NappyEvent.add")
-    def add(self, *, ts: datetime, type: str, notes: Optional[str]) -> int:
-        logger.info("Adding nappy event: ts=%s type=%s", ts, type)
-        obj = NappyEvent(ts=ts, type=type, notes=notes)
-        with _commit_or_rollback(self.session, "NappyEvent.add"):
-            self.session.add(obj)
-        self.session.refresh(obj)
-        logger.debug("NappyEvent.add: inserted id=%s", obj.id)
-        return obj.id
-
-    @_timed("NappyEvent.last")
-    def last(self, type: Optional[str] = None):
-        stmt = select(NappyEvent).order_by(NappyEvent.id.desc())
-        if type:
-            stmt = stmt.where(NappyEvent.type == type)
-        logger.debug("NappyEvent.last: executing %s", stmt.limit(1))
-        row = self.session.execute(stmt.limit(1)).scalar_one_or_none()
-        if not row:
-            logger.info("NappyEvent.last: no rows found (type=%s)", type)
+        if not obj:
             return None
-        result = {"ts": row.ts, "data": {"type": row.type, "notes": row.notes}}
-        logger.debug("NappyEvent.last: returning %s", result)
-        return result
+        return {
+            "id": obj.id, "ts": obj.ts, "type": obj.type,
+            "notes": obj.notes, "tags": obj.tags, "metadata": obj.metadata_json
+        }
 
-    @_timed("NappyEvent.stats_since")
-    def stats_since(self, since: datetime, type: Optional[str] = None) -> dict:
-        logger.info("NappyEvent.stats_since: since=%s type=%s", since, type)
-        stmt = select(func.count(NappyEvent.id)).where(NappyEvent.ts >= since)
-        if type:
-            stmt = stmt.where(NappyEvent.type == type)
-        logger.debug("NappyEvent.stats_since: executing %s", stmt)
-        count = self.session.execute(stmt).scalar_one() or 0
-        result = {"count": int(count)}
-        logger.debug("NappyEvent.stats_since: result=%s", result)
-        return result
+    @_timed("Event.delete")
+    def delete(self, id: UUID) -> bool:
+        with _commit_or_rollback(self.session, "Event.delete"):
+            res = self.session.execute(delete(Event).where(Event.id == id))
+        return (res.rowcount or 0) > 0
 
-    @_timed("NappyEvent.delete_last")
+    @_timed("Event.delete_last")
     def delete_last(self, type: Optional[str] = None) -> bool:
-        logger.info("NappyEvent.delete_last: deleting most recent event (type=%s)", type)
-        sel = select(NappyEvent.id).order_by(NappyEvent.id.desc()).limit(1)
+        sel = select(Event.id).order_by(Event.ts.desc(), Event.id.desc()).limit(1)
         if type:
-            sel = sel.where(NappyEvent.type == type)
+            sel = sel.where(Event.type == type)
         latest_id = self.session.execute(sel).scalar_one_or_none()
         if latest_id is None:
-            logger.info("NappyEvent.delete_last: nothing to delete (type=%s)", type)
+            logger.info("Event.delete_last: nothing to delete (type=%s)", type)
             return False
-        with _commit_or_rollback(self.session, "NappyEvent.delete_last"):
-            self.session.execute(delete(NappyEvent).where(NappyEvent.id == latest_id))
-        logger.debug("NappyEvent.delete_last: deleted id=%s", latest_id)
+        with _commit_or_rollback(self.session, "Event.delete_last"):
+            self.session.execute(delete(Event).where(Event.id == latest_id))
+        logger.debug("Event.delete_last: deleted id=%s", latest_id)
         return True
+
+    @_timed("Event.stats_since")
+    def stats_since(self, since: datetime, type: Optional[str] = None) -> dict:
+        logger.info("Event.stats_since: since=%s type=%s", since, type)
+        stmt = select(func.count(Event.id)).where(Event.ts >= since)
+        if type:
+            stmt = stmt.where(Event.type == type)
+        count = self.session.execute(stmt).scalar_one() or 0
+        return {"count": int(count)}
+
+    @_timed("Event.delete_all")
+    def delete_all(self) -> int:
+        """Delete all rows from events table. Returns number of rows deleted."""
+        with _commit_or_rollback(self.session, "Event.delete_all"):
+            res = self.session.execute(delete(Event))
+        return int(res.rowcount or 0)

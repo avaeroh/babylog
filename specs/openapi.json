@@ -5,10 +5,10 @@
     "version": "0.1.0"
   },
   "paths": {
-    "/health": {
+    "/v1/health": {
       "get": {
         "summary": "Health",
-        "operationId": "health_health_get",
+        "operationId": "health_v1_health_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -21,10 +21,10 @@
         }
       }
     },
-    "/log/feedevent": {
+    "/v1/events": {
       "post": {
-        "summary": "Log Feed",
-        "operationId": "log_feed_log_feedevent_post",
+        "summary": "Create Event",
+        "operationId": "create_event_v1_events_post",
         "parameters": [
           {
             "name": "x-api-key",
@@ -41,7 +41,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/FeedEventIn"
+                "$ref": "#/components/schemas/EventIn"
               }
             }
           }
@@ -51,7 +51,135 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "List Events",
+        "operationId": "list_events_v1_events_get",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(ts:(asc|desc))$",
+              "default": "ts:desc",
+              "title": "Sort"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventListOut"
+                }
               }
             }
           },
@@ -68,11 +196,68 @@
         }
       }
     },
-    "/log/nappyevent": {
-      "post": {
-        "summary": "Log Nappy",
-        "operationId": "log_nappy_log_nappyevent_post",
+    "/v1/events/{id}": {
+      "get": {
+        "summary": "Get Event",
+        "operationId": "get_event_v1_events__id__get",
         "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Event",
+        "operationId": "update_event_v1_events__id__patch",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          },
           {
             "name": "x-api-key",
             "in": "header",
@@ -88,17 +273,19 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NappyEventIn"
+                "$ref": "#/components/schemas/EventUpdate"
               }
             }
           }
         },
         "responses": {
-          "201": {
+          "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
               }
             }
           },
@@ -113,13 +300,21 @@
             }
           }
         }
-      }
-    },
-    "/last/feedevent": {
+      },
       "delete": {
-        "summary": "Delete Last Feed",
-        "operationId": "delete_last_feed_last_feedevent_delete",
+        "summary": "Delete Event",
+        "operationId": "delete_event_v1_events__id__delete",
         "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          },
           {
             "name": "x-api-key",
             "in": "header",
@@ -145,11 +340,87 @@
             }
           }
         }
-      },
-      "get": {
-        "summary": "Last Feed",
-        "operationId": "last_feed_last_feedevent_get",
+      }
+    },
+    "/v1/event/{etype}": {
+      "post": {
+        "summary": "Create Typed Event",
+        "operationId": "create_typed_event_v1_event__etype__post",
         "parameters": [
+          {
+            "name": "etype",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Etype"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/event/{etype}/last": {
+      "get": {
+        "summary": "Last By Type",
+        "operationId": "last_by_type_v1_event__etype__last_get",
+        "parameters": [
+          {
+            "name": "etype",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Etype"
+            }
+          },
           {
             "name": "x-api-key",
             "in": "header",
@@ -182,18 +453,15 @@
             }
           }
         }
-      }
-    },
-    "/last/nappyevent": {
+      },
       "delete": {
-        "summary": "Delete Last Nappy",
-        "description": "If ?type=pee|poo is provided, deletes the latest of that type.\nOtherwise deletes the latest nappy event of any type.",
-        "operationId": "delete_last_nappy_last_nappyevent_delete",
+        "summary": "Delete Last By Type",
+        "operationId": "delete_last_by_type_v1_event__etype__last_delete",
         "parameters": [
           {
-            "name": "type",
-            "in": "query",
-            "required": false,
+            "name": "etype",
+            "in": "path",
+            "required": true,
             "schema": {
               "anyOf": [
                 {
@@ -203,7 +471,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Type"
+              "title": "Etype"
             }
           },
           {
@@ -231,65 +499,13 @@
             }
           }
         }
-      },
-      "get": {
-        "summary": "Last Nappy",
-        "operationId": "last_nappy_last_nappyevent_get",
-        "parameters": [
-          {
-            "name": "type",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Type"
-            }
-          },
-          {
-            "name": "x-api-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LastOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
       }
     },
-    "/stats/feedevents": {
+    "/v1/stats/events": {
       "get": {
-        "summary": "Stats Feeds",
-        "operationId": "stats_feeds_stats_feedevents_get",
+        "summary": "Stats Events",
+        "description": "Stats for events in a period like '24h' or '7d'.\nOptional type filter (e.g., 'feeding', 'nappy').",
+        "operationId": "stats_events_v1_stats_events_get",
         "parameters": [
           {
             "name": "period",
@@ -298,6 +514,22 @@
             "schema": {
               "type": "string",
               "title": "Period"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
             }
           },
           {
@@ -334,36 +566,12 @@
         }
       }
     },
-    "/stats/nappyevents": {
-      "get": {
-        "summary": "Stats Nappies",
-        "operationId": "stats_nappies_stats_nappyevents_get",
+    "/v1/admin/reset": {
+      "post": {
+        "summary": "Admin Reset",
+        "description": "Deletes all data from the database while keeping tables/schema.\nProtected by API key and RESET_ENABLED=1.",
+        "operationId": "admin_reset_v1_admin_reset_post",
         "parameters": [
-          {
-            "name": "period",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Period"
-            }
-          },
-          {
-            "name": "type",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Type"
-            }
-          },
           {
             "name": "x-api-key",
             "in": "header",
@@ -379,9 +587,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StatsOut"
-                }
+                "schema": {}
               }
             }
           },
@@ -401,54 +607,19 @@
   },
   "components": {
     "schemas": {
-      "FeedEventIn": {
+      "EventIn": {
         "properties": {
-          "type": {
-            "type": "string",
-            "enum": [
-              "breast",
-              "bottle"
-            ],
-            "title": "Type"
-          },
-          "side": {
+          "ts": {
             "anyOf": [
               {
                 "type": "string",
-                "enum": [
-                  "left",
-                  "right"
-                ]
+                "format": "date-time"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Side"
-          },
-          "duration_min": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "minimum": 0.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Duration Min"
-          },
-          "volume_ml": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "minimum": 0.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Volume Ml"
+            "title": "Ts"
           },
           "notes": {
             "anyOf": [
@@ -461,6 +632,72 @@
             ],
             "title": "Notes"
           },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "Event type, e.g., 'feeding', 'nappy'."
+          }
+        },
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "title": "EventIn"
+      },
+      "EventListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EventOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "EventListOut"
+      },
+      "EventOut": {
+        "properties": {
           "ts": {
             "anyOf": [
               {
@@ -472,13 +709,125 @@
               }
             ],
             "title": "Ts"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "Event type, e.g., 'feeding', 'nappy'."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
           }
         },
         "type": "object",
         "required": [
-          "type"
+          "type",
+          "id"
         ],
-        "title": "FeedEventIn"
+        "title": "EventOut"
+      },
+      "EventUpdate": {
+        "properties": {
+          "ts": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ts"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          }
+        },
+        "type": "object",
+        "title": "EventUpdate"
       },
       "HTTPValidationError": {
         "properties": {
@@ -516,46 +865,6 @@
           "data"
         ],
         "title": "LastOut"
-      },
-      "NappyEventIn": {
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": [
-              "pee",
-              "poo"
-            ],
-            "title": "Type"
-          },
-          "notes": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Notes"
-          },
-          "ts": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ts"
-          }
-        },
-        "type": "object",
-        "required": [
-          "type"
-        ],
-        "title": "NappyEventIn"
       },
       "StatsOut": {
         "properties": {

@@ -35,16 +35,13 @@ def wait_for_db(timeout_s: int = 30, interval_s: float = 1.0) -> None:
             last_err = e
             log.info("DB not ready yet (attempt %s): %s", attempts, repr(e))
             time.sleep(interval_s)
-    # If we get here, we never connected
     log.error("DB still not reachable after %ss: %s", timeout_s, repr(last_err))
     raise last_err or RuntimeError("DB not reachable")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
-        # 1) Wait for DB to be reachable (Postgres can take a few seconds)
         wait_for_db(timeout_s=45, interval_s=1.5)
-        # 2) Create tables (idempotent)
         init_db()
         log.info("Startup complete")
     except Exception:
