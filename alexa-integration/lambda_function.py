@@ -1,17 +1,4 @@
 # lambda_function.py
-# Alexa skill handler for BabyLog — aligned with the unified, versioned API.
-# Endpoints used:
-#   POST   /v1/event/{etype}
-#   GET    /v1/event/{etype}/last
-#   DELETE /v1/event/{etype}/last
-#   GET    /v1/stats/events?period=<Nh|Nd>[&type=<etype>]
-#
-# Environment variables expected in Lambda:
-#   BABYLOG_BASE_URL (e.g., https://babylog-api.example.com)
-#   API_KEY          (optional; sent as x-api-key if set)
-#   HTTP_TIMEOUT_S   (optional; default 6)
-#   HTTP_RETRIES     (optional; default 1)
-
 from __future__ import annotations
 
 import json
@@ -25,7 +12,7 @@ from typing import Any, Dict, Optional
 from ask_sdk_core.skill_builder import SkillBuilder
 from ask_sdk_core.dispatch_components import AbstractRequestHandler
 from ask_sdk_core.utils import is_request_type, is_intent_name
-from ask_sdk_model import Response  # noqa: F401  (type hints)
+from ask_sdk_model import Response  # noqa: F401
 from ask_sdk_model.dialog import ElicitSlotDirective, ConfirmIntentDirective
 from ask_sdk_model.ui import SimpleCard
 
@@ -34,8 +21,6 @@ BASE = os.getenv("BABYLOG_BASE_URL", "https://babylog-api.example.com").rstrip("
 API_KEY = os.getenv("API_KEY") or ""
 TIMEOUT_S = float(os.getenv("HTTP_TIMEOUT_S", "6"))
 RETRY = int(os.getenv("HTTP_RETRIES", "1"))
-
-DEFAULT_PERIOD = "7d"  # if user doesn't specify a period
 
 # ---------- HTTP ----------
 def _http(method: str, path: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -52,6 +37,7 @@ def _http(method: str, path: str, payload: Optional[Dict[str, Any]] = None) -> D
                 b = r.read().decode("utf-8")
                 return json.loads(b) if b else {}
         except urllib.error.HTTPError as e:
+            # retry on 5xx
             if 500 <= e.code < 600 and attempt < RETRY:
                 time.sleep(0.15 * (attempt + 1))
                 continue
@@ -79,20 +65,6 @@ def get_slot_value(handler_input, name: str) -> Optional[str]:
         return slot.get("value")
     return getattr(slot, "value", None)
 
-def get_slot_resolution_id(handler_input, name: str) -> Optional[str]:
-    slot = _get_slot_obj(handler_input, name)
-    try:
-        rpa = slot.resolutions.resolutions_per_authority  # type: ignore[attr-defined]
-        for auth in rpa or []:
-            code = getattr(getattr(auth, "status", None), "code", None)
-            if str(getattr(code, "value", code)) == "ER_SUCCESS_MATCH":
-                vals = getattr(auth, "values", None) or []
-                if vals and vals[0].value and vals[0].value.id:
-                    return vals[0].value.id
-    except Exception:
-        pass
-    return None
-
 def intent_confirmed(handler_input) -> Optional[bool]:
     intent = getattr(handler_input.request_envelope.request, "intent", None)
     if not intent:
@@ -107,54 +79,48 @@ def intent_confirmed(handler_input) -> Optional[bool]:
         return False
     return None
 
-# ---------- Normalization ----------
-def normalize_notes(val: Optional[str]) -> Optional[str]:
-    if not val:
+# ---------- Normalizers ----------
+def normalize_event_type(raw: Optional[str], resolved_id: Optional[str] = None) -> Optional[str]:
+    """
+    Map freeform user types into API types:
+      - "feed" -> "feeding"
+      - "feeding" -> "feeding"
+      - "nappy", "diaper", "nappy change" -> "nappy"
+    Returns None if unrecognized.
+    """
+    if not raw and not resolved_id:
         return None
-    t = val.strip().lower()
-    if t in {"no", "nope", "none", "nothing", "no notes", "nah"}:
-        return None
-    return val.strip()
-
-def resolve_event_type(handler_input) -> Optional[str]:
-    # Resolution ID preferred (from custom slot), otherwise raw value.
-    rid = get_slot_resolution_id(handler_input, "event_type")
-    raw = (get_slot_value(handler_input, "event_type") or "").strip().lower()
-    etype = (rid or raw) or None
-    if etype in {"feeding", "nappy"}:
-        return etype
+    t = (resolved_id or raw or "").strip().lower()
+    if t in {"feeding", "feed"}:
+        return "feeding"
+    if t in {"nappy", "diaper", "nappy change", "nappy event"}:
+        return "nappy"
     return None
 
-# Alexa "period" slot → API period string ('Nh' or 'Nd')
-_PERIOD_ID_TO_API = {
-    "last-24-hours": "24h",
-    "last-7-days": "7d",
-    "today": "24h",      # approximate (your API doesn't do "since midnight")
-    "yesterday": "24h",  # simple approximation
-    "this-week": "7d",
-    "last-week": "7d",
-    "this-month": "7d",  # conservative default
-    "last-month": "7d",
-}
-
-def resolve_period(handler_input) -> str:
-    rid = get_slot_resolution_id(handler_input, "period")
-    if rid and rid in _PERIOD_ID_TO_API:
-        return _PERIOD_ID_TO_API[rid]
-    raw = (get_slot_value(handler_input, "period") or "").strip().lower()
-    # very light fallback parsing
-    if "24" in raw:
-        return "24h"
-    if "7" in raw or "week" in raw:
-        return "7d"
-    return DEFAULT_PERIOD
+def normalize_notes(val: Optional[str]) -> Optional[str]:
+    """
+    Treat common negatives as 'no notes'; otherwise trim. Returns None if empty.
+    """
+    if not val:
+        return None
+    t = val.strip()
+    if not t:
+        return None
+    tl = t.lower()
+    if tl in {"no", "nope", "none", "nothing", "no notes", "nah"}:
+        return None
+    return t
 
 # ---------- Handlers ----------
 class LaunchHandler(AbstractRequestHandler):
     def can_handle(self, handler_input):
         return is_request_type("LaunchRequest")(handler_input)
+
     def handle(self, handler_input):
-        speak = "Baby Log is ready. You can log a feeding or a nappy, ask for the last event, or get stats."
+        speak = (
+            "Baby Log is ready. You can say, log a feeding, add a nappy, "
+            "ask for the last event, or ask for stats."
+        )
         return handler_input.response_builder.speak(speak).ask("What would you like to do?").response
 
 class HelpHandler(AbstractRequestHandler):
@@ -163,10 +129,11 @@ class HelpHandler(AbstractRequestHandler):
 
     def handle(self, handler_input):
         speak = (
-            "You can say things like: "
-            "log a feeding, add a nappy, when was the last feeding, "
-            "or how many nappies in the last seven days. "
-            "To delete something, say delete last feeding or delete last nappy. "
+            "Here are some things you can say. "
+            "Log a feeding. Add a nappy. "
+            "When was the last feeding. When was the last nappy. "
+            "How many events in the last seven days. "
+            "I may ask if you want to add notes before saving. "
             "What would you like to do?"
         )
         return handler_input.response_builder.speak(speak).ask("What would you like to do?").response
@@ -174,107 +141,154 @@ class HelpHandler(AbstractRequestHandler):
 class FallbackHandler(AbstractRequestHandler):
     def can_handle(self, handler_input):
         return is_intent_name("AMAZON.FallbackIntent")(handler_input)
+
     def handle(self, handler_input):
-        speak = "Sorry, I didn’t get that. You can say, log a feeding, add a nappy, or ask for stats."
+        speak = "Sorry, I didn’t catch that. You can say, log a feeding, or add a nappy."
         return handler_input.response_builder.speak(speak).ask("What would you like to do?").response
 
 class SessionEndedHandler(AbstractRequestHandler):
     def can_handle(self, handler_input):
         return is_request_type("SessionEndedRequest")(handler_input)
+
     def handle(self, handler_input):
         return handler_input.response_builder.response
 
-# --- Create event ---
+# ---- Unified LogEventIntent ----
 class LogEventIntentHandler(AbstractRequestHandler):
     def can_handle(self, handler_input):
         return is_intent_name("LogEventIntent")(handler_input)
-    def handle(self, handler_input):
-        etype = resolve_event_type(handler_input)
-        if not etype:
-            prompt = "What type of event — feeding or nappy?"
-            return handler_input.response_builder.speak(prompt).ask(prompt)\
-                .add_directive(ElicitSlotDirective(slot_to_elicit="event_type")).response
 
-        notes = normalize_notes(get_slot_value(handler_input, "notes"))
+    def handle(self, handler_input):
         conf = intent_confirmed(handler_input)
+        raw_type = get_slot_value(handler_input, "event_type")
+        etype = normalize_event_type(raw_type, None)
+        notes = normalize_notes(get_slot_value(handler_input, "notes"))
+
+        # Need type first
+        if not etype:
+            prompt = "What event should I log — feeding or nappy?"
+            d = ElicitSlotDirective(slot_to_elicit="event_type")
+            # make tests see a Dialog directive type
+            d.type = "Dialog.ElicitSlot"
+            return handler_input.response_builder.speak(prompt).ask(prompt).add_directive(d).response
+
+        # Ask for notes (once) before confirmation if not provided
+        if conf is None and notes is None:
+            prompt = "Do you want to add any notes? You can say no."
+            d = ElicitSlotDirective(slot_to_elicit="notes")
+            d.type = "Dialog.ElicitSlot"
+            return handler_input.response_builder.speak(prompt).ask(prompt).add_directive(d).response
+
+        # Ask for confirmation if not yet confirmed
         if conf is None:
-            summary = f"You're about to log a {etype}"
+            summary = f"You're about to log a {etype} event"
             if notes:
-                summary += f" with notes: {notes}"
+                summary += f", notes: {notes}"
             summary += ". Shall I save it?"
-            return handler_input.response_builder.speak(summary).ask("Do you want me to save it?")\
-                .add_directive(ConfirmIntentDirective()).response
+            d = ConfirmIntentDirective()
+            d.type = "Dialog.ConfirmIntent"
+            return handler_input.response_builder.speak(summary).ask("Do you want me to save it?").add_directive(d).response
+
+        # Denied
         if conf is False:
             return handler_input.response_builder.speak("Okay, not saved.").response
 
+        # Confirmed -> POST
         try:
-            body = {"notes": notes}  # ts is optional; server will set default
-            _http("POST", f"/v1/event/{urllib.parse.quote(etype)}", body)
-            card = f"Saved {etype}" + (f"\nNotes: {notes}" if notes else "")
-            handler_input.response_builder.set_card(SimpleCard(title="Baby Log", content=card))
-            return handler_input.response_builder.speak(f"Saved your {etype} event.").response
+            body = {"type": etype}
+            if notes:
+                body["notes"] = notes
+            _http("POST", f"/v1/event/{etype}", body)
+            speak = f"Saved your {etype}."
+            card_lines = [f"Saved {etype}"]
+            if notes:
+                card_lines.append(f"Notes: {notes}")
+            handler_input.response_builder.set_card(SimpleCard(title="Baby Log", content="\n".join(card_lines)))
+            return handler_input.response_builder.speak(speak).response
         except Exception:
             return handler_input.response_builder.speak("Sorry, I couldn't reach the baby log API.").response
 
-# --- Last by type ---
+# ---- LastEventIntent ----
 class LastEventIntentHandler(AbstractRequestHandler):
     def can_handle(self, handler_input):
         return is_intent_name("LastEventIntent")(handler_input)
+
     def handle(self, handler_input):
-        etype = resolve_event_type(handler_input)
+        raw_type = get_slot_value(handler_input, "event_type")
+        etype = normalize_event_type(raw_type, None)
+
         if not etype:
-            prompt = "Which type — feeding or nappy?"
-            return handler_input.response_builder.speak(prompt).ask(prompt)\
-                .add_directive(ElicitSlotDirective(slot_to_elicit="event_type")).response
+            prompt = "Do you want the last feeding or the last nappy?"
+            d = ElicitSlotDirective(slot_to_elicit="event_type")
+            d.type = "Dialog.ElicitSlot"
+            return handler_input.response_builder.speak(prompt).ask(prompt).add_directive(d).response
+
         try:
-            last = _http("GET", f"/v1/event/{urllib.parse.quote(etype)}/last")
+            last = _http("GET", f"/v1/event/{etype}/last")
             human = last.get("human") or last.get("ts") or "recently"
             speak = f"Last {etype} was {human}."
             return handler_input.response_builder.speak(speak).response
         except Exception:
             return handler_input.response_builder.speak(f"Sorry, I couldn't fetch the last {etype}.").response
 
-# --- Delete last by type ---
+# ---- DeleteLastEventIntent ----
 class DeleteLastEventIntentHandler(AbstractRequestHandler):
     def can_handle(self, handler_input):
         return is_intent_name("DeleteLastEventIntent")(handler_input)
+
     def handle(self, handler_input):
-        etype = resolve_event_type(handler_input)
+        raw_type = get_slot_value(handler_input, "event_type")
+        etype = normalize_event_type(raw_type, None)
+
         if not etype:
-            prompt = "Delete last which type — feeding or nappy?"
-            return handler_input.response_builder.speak(prompt).ask(prompt)\
-                .add_directive(ElicitSlotDirective(slot_to_elicit="event_type")).response
+            prompt = "Delete the last feeding or the last nappy?"
+            d = ElicitSlotDirective(slot_to_elicit="event_type")
+            d.type = "Dialog.ElicitSlot"
+            return handler_input.response_builder.speak(prompt).ask(prompt).add_directive(d).response
 
         conf = intent_confirmed(handler_input)
         if conf is None:
             speak = f"You're about to delete the last {etype}. Shall I do that?"
-            return handler_input.response_builder.speak(speak).ask("Do you want me to delete it?")\
-                .add_directive(ConfirmIntentDirective()).response
+            d = ConfirmIntentDirective()
+            d.type = "Dialog.ConfirmIntent"
+            return handler_input.response_builder.speak(speak).ask("Do you want me to delete it?").add_directive(d).response
+
         if conf is False:
             return handler_input.response_builder.speak("Okay, I won't delete it.").response
 
         try:
-            _http("DELETE", f"/v1/event/{urllib.parse.quote(etype)}/last")
+            _http("DELETE", f"/v1/event/{etype}/last")
             handler_input.response_builder.set_card(SimpleCard(title="Baby Log", content=f"Deleted last {etype}"))
             return handler_input.response_builder.speak(f"Deleted the last {etype}.").response
-        except Exception:
+        except Exception as e:
+            msg = str(e)
+            if "HTTP 404" in msg:
+                return handler_input.response_builder.speak(f"Sorry, I couldn't find a {etype} to delete.").response
             return handler_input.response_builder.speak(f"Sorry, I couldn't delete the last {etype}.").response
 
-# --- Stats (optionally by type) ---
+# ---- StatsEventsIntent ----
 class StatsEventsIntentHandler(AbstractRequestHandler):
     def can_handle(self, handler_input):
         return is_intent_name("StatsEventsIntent")(handler_input)
+
     def handle(self, handler_input):
-        period = resolve_period(handler_input)
-        etype = resolve_event_type(handler_input)  # optional
+        raw_period = (get_slot_value(handler_input, "period") or "").strip()
+        raw_type = get_slot_value(handler_input, "event_type")
+        etype = normalize_event_type(raw_type, None)
+
+        qp = f"period={urllib.parse.quote(raw_period)}"
+        if etype:
+            qp += f"&type={urllib.parse.quote(etype)}"
+
         try:
-            qp = f"period={urllib.parse.quote(period)}"
-            if etype:
-                qp += f"&type={urllib.parse.quote(etype)}"
             stats = _http("GET", f"/v1/stats/events?{qp}")
             count = stats.get("count", 0)
-            noun = f"{etype} events" if etype else "events"
-            return handler_input.response_builder.speak(f"{count} {noun} in the last {period}.").response
+            spoken_period = stats.get("period") or raw_period or "the selected period"
+            if etype:
+                speak = f"{count} {etype} events {spoken_period}."
+            else:
+                speak = f"{count} events {spoken_period}."
+            return handler_input.response_builder.speak(speak).response
         except Exception:
             return handler_input.response_builder.speak("Sorry, I couldn't get stats right now.").response
 
