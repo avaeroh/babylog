@@ -160,12 +160,14 @@ class LaunchHandler(AbstractRequestHandler):
 class HelpHandler(AbstractRequestHandler):
     def can_handle(self, handler_input):
         return is_intent_name("AMAZON.HelpIntent")(handler_input)
+
     def handle(self, handler_input):
         speak = (
-            "Try saying: log a feeding with notes, or log a nappy with notes. "
-            "Ask: when was the last feeding, or last nappy. "
-            "For stats: how many events in the last seven days, or how many nappy events last week. "
-            "To undo: delete last feeding or delete last nappy."
+            "You can say things like: "
+            "log a feeding, add a nappy, when was the last feeding, "
+            "or how many nappies in the last seven days. "
+            "To delete something, say delete last feeding or delete last nappy. "
+            "What would you like to do?"
         )
         return handler_input.response_builder.speak(speak).ask("What would you like to do?").response
 

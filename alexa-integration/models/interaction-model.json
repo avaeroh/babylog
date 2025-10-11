@@ -14,7 +14,9 @@
             "add a {event_type}",
             "record a {event_type}",
             "we just had a {event_type}",
-            "log an {event_type}"
+            "log an {event_type}",
+            "note {notes}",
+            "with notes {notes}"
           ]
         },
         {
@@ -66,7 +68,11 @@
           "name": "EVENT_TYPE",
           "values": [
             { "name": { "value": "feeding" }, "id": "feeding" },
-            { "name": { "value": "nappy" }, "id": "nappy", "synonyms": ["diaper", "nappy change", "nappy event"] }
+            {
+              "name": { "value": "nappy" },
+              "id": "nappy",
+              "synonyms": ["diaper", "nappy change", "nappy event"]
+            }
           ]
         },
         {
@@ -87,12 +93,47 @@
     "dialog": {
       "delegationStrategy": "SKILL_RESPONSE",
       "intents": [
-        { "name": "LogEventIntent" },
-        { "name": "LastEventIntent" },
-        { "name": "DeleteLastEventIntent" },
-        { "name": "StatsEventsIntent" }
+        {
+          "name": "LogEventIntent",
+          "confirmationRequired": false,
+          "prompts": {},
+          "slots": [
+            {
+              "name": "event_type",
+              "type": "EVENT_TYPE",
+              "elicitationRequired": true,
+              "confirmationRequired": false,
+              "prompts": { "elicitation": "Elicit.EventType" }
+            },
+            {
+              "name": "notes",
+              "type": "AMAZON.SearchQuery",
+              "elicitationRequired": false,
+              "confirmationRequired": false,
+              "prompts": { "elicitation": "Elicit.Notes" }
+            }
+          ]
+        },
+        { "name": "LastEventIntent", "confirmationRequired": false, "prompts": {}, "slots": [] },
+        { "name": "DeleteLastEventIntent", "confirmationRequired": false, "prompts": {}, "slots": [] },
+        { "name": "StatsEventsIntent", "confirmationRequired": false, "prompts": {}, "slots": [] }
       ]
     },
-    "prompts": []
+    "prompts": [
+      {
+        "id": "Elicit.EventType",
+        "variations": [
+          { "type": "PlainText", "value": "What type of event would you like to log — feeding or nappy?" },
+          { "type": "PlainText", "value": "Is that a feeding or a nappy event?" }
+        ]
+      },
+      {
+        "id": "Elicit.Notes",
+        "variations": [
+          { "type": "PlainText", "value": "Any notes to add?" },
+          { "type": "PlainText", "value": "Would you like to add any notes?" }
+        ]
+      }
+    ]
   }
 }
