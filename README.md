@@ -20,6 +20,21 @@ It also ships with **Adminer** (DB admin) and **Metabase** (dashboards) for quic
 
 ## Quickstart
 
+### 0) Assumptions/Technical Notes
+
+I created this on a Raspberry Pi5, running on Docker, sitting behind an nginx reverse proxy that redirects from my domain. It works in this setup, it may not in others (many other devices won't be running ARM, for example).
+
+Unfortunately to connect to Alexa there are two options:
+
+1) use AWS to host the lambda and use AWS Developer Console to host the skill, or
+2) Use AWS Developer Console only, and pretend you're not using AWS to host your code (except you are). 
+
+I would've liked to have my code running locally with only the skill in AWS (or even host that locally), but it doesn't currently seem possible. Uploading the Lambda to the AWS Developer console also proved faffy, so I ended up just using AWS Lambda directly - zipping the file (with the make command) and uploading it. 
+
+I'd like to simplify this project over time - ideally a simple install command which accounts for architecture differences to remove the need for technical knowledge - but this project is very much MVP at the moment.
+
+I would advise having at least some prior linux/docker/networking experience before attempting to configure this project. 
+
 ### 1) Prerequisites
 - Docker + Docker Compose
 - A `.env` file at the repo root with your secrets:
