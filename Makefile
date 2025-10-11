@@ -8,8 +8,7 @@ COMPOSE ?= docker-compose
 export DOCKER_DEFAULT_PLATFORM := linux/arm64
 
 .PHONY: help build build-clean test test-clean up down logs wipe-data \
-        openapi-spec openapi \
-        lambda-build lambda-test lambda-test-clean \
+        openapi-spec openapi lambda-build lambda-test lambda-test-clean \
         lambda-zip-aws lambda-zip-aws-list lambda-zip-aws-verify lambda-zip-aws-clean
 
 help:
@@ -20,16 +19,13 @@ help:
 	@echo "make up                    - Start api + db"
 	@echo "make down                  - Stop stack"
 	@echo "make logs                  - Tail API logs"
-	@echo "make wipe-data             - TRUNCATE feeds & nappyevents (prompted)"
+	@echo "make wipe-data             - ⚠️  Truncate ALL tables (dangerous!)"
 	@echo "make openapi               - Export OpenAPI spec to specs/openapi.json"
 	@echo ""
-	@echo "Lambda (AWS zip, pure-Python):"
-	@echo "make lambda-build          - Build lambda-tests image"
-	@echo "make lambda-test           - Run lambda unit tests (no network)"
-	@echo "make lambda-test-clean     - Clean rebuild + run lambda unit tests"
-	@echo "make lambda-zip-aws        - Build specs/lambda.zip (root: code + SDK)"
-	@echo "make lambda-zip-aws-list   - List zip contents"
-	@echo "make lambda-zip-aws-verify - Verify imports + ensure no .so files"
+	@echo "Lambda:"
+	@echo "make lambda-test           - Run Alexa unit tests (offline)"
+	@echo "make lambda-test-clean     - Clean rebuild + run Lambda tests"
+	@echo "make lambda-zip-aws        - Build specs/lambda.zip for AWS"
 	@echo "make lambda-zip-aws-clean  - Remove build artifacts"
 
 # ---------- App targets ----------
@@ -54,14 +50,18 @@ down:
 logs:
 	$(COMPOSE) logs -f api
 
+# ---------- DB wipe ----------
+# Truncates every table in the connected Postgres DB.
+# Safe schema-only approach — keeps tables but removes rows and resets sequences.
 wipe-data:
-	@read -p "⚠️  This will TRUNCATE feeds & nappyevents. Type YES to continue: " confirm && \
+	@read -p "⚠️  This will DELETE ALL DATA in database '$(DB_NAME)'. Type YES to continue: " confirm && \
 	if [ "$$confirm" = "YES" ]; then \
-		$(COMPOSE) exec -T db psql -v ON_ERROR_STOP=1 -U $(DB_USER) -d $(DB_NAME) \
-		  -c "TRUNCATE TABLE public.feeds, public.nappyevents RESTART IDENTITY CASCADE;" && \
-		echo "✅ Tables truncated."; \
+	  echo "Truncating all tables in $(DB_NAME)..."; \
+	  $(COMPOSE) exec -T db psql -U $(DB_USER) -d $(DB_NAME) -v ON_ERROR_STOP=1 -c \
+	    "DO $$ BEGIN EXECUTE (SELECT string_agg(format('TRUNCATE TABLE %%I.%%I RESTART IDENTITY CASCADE;', schemaname, tablename), ' ') FROM pg_tables WHERE schemaname='public'); END $$;"; \
+	  echo "✅ All tables truncated."; \
 	else \
-		echo "Cancelled."; \
+	  echo "Cancelled."; \
 	fi
 
 # --- OpenAPI export ---
@@ -74,7 +74,7 @@ openapi-spec:
 
 openapi: openapi-spec
 
-# ---------- Lambda unit tests ----------
+# --- Lambda tests ---
 lambda-build:
 	$(COMPOSE) build lambda-tests
 
@@ -85,23 +85,14 @@ lambda-test-clean:
 	$(COMPOSE) build --no-cache --pull lambda-tests
 	$(COMPOSE) run --rm -e RUN_LAMBDA_ITESTS=0 lambda-tests
 
-# ---------- AWS Lambda packaging (pure-Python; ARM build) ----------
-# Produces: specs/lambda.zip
-# ZIP root contains:
-#   - lambda_function.py
-#   - ask_sdk_core/, ask_sdk_model/, ask_sdk_runtime/ (and pure-Python deps)
-# Notes:
-#  - Force ARM64 container on the Pi to avoid 'exec format error'.
-#  - Install charset-normalizer from source (no binary wheel) and prune any *.so.
-DOCKER_PLATFORM ?= --platform=linux/arm64/v8
-
 lambda-zip-aws:
-	@docker run --rm $(DOCKER_PLATFORM) \
+	@echo "Building AWS Lambda ZIP (pure Python)..."
+	@docker run --rm --platform=linux/arm64/v8 \
 	  -e PIP_ROOT_USER_ACTION=ignore -e DEBIAN_FRONTEND=noninteractive \
 	  -v "$$PWD":/work -w /work python:3.11-slim /bin/sh -c ' \
 	    set -e; \
 	    rm -rf build_lambda; mkdir -p build_lambda specs; \
-	    python -m pip install --upgrade pip --no-cache-dir -q; \
+	    python -m pip install --upgrade pip -q; \
 	    pip install --no-cache-dir -q --target build_lambda \
 	      --no-binary charset-normalizer \
 	      ask-sdk-core==1.19.0 ask-sdk-model==1.49.0 ask-sdk-runtime==1.19.0; \
@@ -114,4 +105,4 @@ lambda-zip-aws:
 	    cd build_lambda && zip -qr ../specs/lambda.zip .; \
 	    echo "Wrote specs/lambda.zip" \
 	  '
-	@echo "✅ Built specs/lambda.zip. Upload this to AWS Lambda (Python 3.11)."
+	@echo "✅ Built specs/lambda.zip"

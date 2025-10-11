@@ -10,12 +10,11 @@
             { "name": "notes", "type": "AMAZON.SearchQuery" }
           ],
           "samples": [
-            "log an {event_type}",
-            "add an {event_type}",
-            "record an {event_type}",
-            "log a {event_type} with {notes}",
-            "add a {event_type} with {notes}",
-            "we just had a {event_type}"
+            "log a {event_type}",
+            "add a {event_type}",
+            "record a {event_type}",
+            "we just had a {event_type}",
+            "log an {event_type}"
           ]
         },
         {
