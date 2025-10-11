@@ -51,18 +51,18 @@ logs:
 	$(COMPOSE) logs -f api
 
 # ---------- DB wipe ----------
-# Truncates every table in the connected Postgres DB.
-# Safe schema-only approach — keeps tables but removes rows and resets sequences.
+# Truncates every table in the 'public' schema (keeps schema, resets identities).
 wipe-data:
 	@read -p "⚠️  This will DELETE ALL DATA in database '$(DB_NAME)'. Type YES to continue: " confirm && \
 	if [ "$$confirm" = "YES" ]; then \
 	  echo "Truncating all tables in $(DB_NAME)..."; \
-	  $(COMPOSE) exec -T db psql -U $(DB_USER) -d $(DB_NAME) -v ON_ERROR_STOP=1 -c \
-	    "DO $$ BEGIN EXECUTE (SELECT string_agg(format('TRUNCATE TABLE %%I.%%I RESTART IDENTITY CASCADE;', schemaname, tablename), ' ') FROM pg_tables WHERE schemaname='public'); END $$;"; \
-	  echo "✅ All tables truncated."; \
+	  cat babylog-api/scripts/truncate_all.sql | $(COMPOSE) exec -T db psql -U $(DB_USER) -d $(DB_NAME) -v ON_ERROR_STOP=1 -f - \
+	    && echo '✅  All tables truncated successfully.' \
+	    || echo '❌  Truncation failed! Check Postgres logs for details.'; \
 	else \
-	  echo "Cancelled."; \
+	  echo 'Cancelled.'; \
 	fi
+
 
 # --- OpenAPI export ---
 openapi-spec:
