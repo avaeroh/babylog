@@ -63,6 +63,19 @@ wipe-data:
 	  echo 'Cancelled.'; \
 	fi
 
+# Reset DB without tearing the DB down: stop app(s), ensure DB is up, wipe, then restart.
+reset-db:
+	@echo "⏹  Stopping API/UI containers (DB stays or will start)..."
+	-$(COMPOSE) stop api adminer metabase
+	@echo "🚀 Ensuring DB is up..."
+	$(COMPOSE) up -d db
+	@echo "⏳ Waiting for Postgres to be ready..."
+	$(COMPOSE) exec -T db sh -lc 'until pg_isready -U "$$DB_USER" -d "$$DB_NAME" >/dev/null 2>&1; do sleep 1; done'
+	@$(MAKE) wipe-data
+	@echo "🔁 Starting API/UI containers..."
+	$(COMPOSE) up -d api adminer metabase
+	@echo "✅ Reset complete."
+
 
 # --- OpenAPI export ---
 openapi-spec:

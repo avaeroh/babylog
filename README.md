@@ -9,19 +9,19 @@ It also ships with **Adminer** (DB admin) and **Metabase** (dashboards) for quic
 
 ## What’s included
 
-- **babylog-api** — FastAPI service, PostgreSQL-backed
-- **alexa-integration** — Alexa Skill handler (AWS Lambda) + interaction model + unit tests
-- **Adminer** — lightweight UI to query your DB
-- **Metabase** — build charts and dashboards over your data
-- **Makefile** — one-liners for build, test, and packaging
-- **Docker Compose** — spins up everything locally or on a server
+- **babylog-api** — FastAPI service, PostgreSQL-backed  
+- **alexa-integration** — Alexa Skill handler (AWS Lambda) + interaction model + unit tests  
+- **Adminer** — lightweight UI to query your DB  
+- **Metabase** — build charts and dashboards over your data  
+- **Makefile** — one-liners for build, test, and packaging  
+- **Docker Compose** — spins up everything locally or on a server  
 
 ---
 
 ## Quickstart
 
 ### 1) Prerequisites
-- Docker + Docker Compose
+- Docker + Docker Compose  
 - A `.env` file at the repo root with your secrets:
 
 ```env
@@ -51,10 +51,10 @@ make build
 make up
 ```
 This starts:
-- **db** (PostgreSQL)
-- **api** (FastAPI on `:5080`)
-- **adminer** (web UI on `:5081`)
-- **metabase** (web UI on `:5000`)
+- **db** (PostgreSQL)  
+- **api** (FastAPI on `:5080`)  
+- **adminer** (web UI on `:5081`)  
+- **metabase** (web UI on `:5000`)  
 
 Verify:
 ```bash
@@ -98,13 +98,39 @@ Confirm by typing **YES** to proceed.
 **Example output:**
 ```
 Truncating all tables in babylog...
-✅ All tables truncated.
+✅  All tables truncated successfully.
 ```
 To skip the prompt, run non-interactively:
 ```bash
 yes YES | make wipe-data
 ```
 **Warning:** This action is irreversible. It does **not** affect schema, migrations, or user accounts, but removes all event data.
+
+### 6) Reset database (safe sequence)
+If you want a clean slate without fully tearing down Postgres, add this to your Makefile:
+
+```makefile
+reset-db:
+	-$(COMPOSE) stop api adminer metabase
+	$(COMPOSE) up -d db
+	$(COMPOSE) exec -T db sh -lc 'until pg_isready -U "$$DB_USER" -d "$$DB_NAME" >/dev/null 2>&1; do sleep 1; done'
+	@$(MAKE) wipe-data
+	$(COMPOSE) up -d api adminer metabase
+	@echo "✅ Database reset and containers restarted."
+```
+
+Then run:
+```bash
+make reset-db
+```
+
+This:
+1. Stops API/UI containers  
+2. Ensures DB is running and healthy  
+3. Truncates all tables via `make wipe-data`  
+4. Brings API/UI back up  
+
+If you later add more services (e.g. `worker`), just include them in the `stop` and `up -d` lines.
 
 ---
 
