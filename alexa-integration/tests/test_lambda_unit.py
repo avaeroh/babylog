@@ -1,13 +1,11 @@
 import importlib
-import os
 import types
-import pytest
+import urllib.parse
 
-# Ensure envs exist for import-time references
-os.environ.setdefault("BABYLOG_BASE_URL", "https://babylog-api.example.com")
-os.environ.setdefault("API_KEY", "test-key")
-
+# Import the lambda module after envs are set (done in conftest)
 lf = importlib.import_module("lambda_function")
+
+# ---- stubs / builders ----
 
 class DummyRB:
     def __init__(self):
@@ -19,115 +17,150 @@ class DummyRB:
     def ask(self, text):
         self.reprompt = text; return self
     def add_directive(self, d):
-        self.directives.append(d); return self
+        # store the name only to keep assertions simple
+        name = getattr(d, "type", None) or getattr(d, "object_type", None) or getattr(d, "__class__", type("x",(object,),{})).__name__
+        if hasattr(d, "type"):
+            self.directives.append({"type": d.type})
+        else:
+            self.directives.append({"type": str(name)})
+        return self
+    def set_card(self, _):
+        return self
     @property
     def response(self):
         return {"speech": self.speech, "reprompt": self.reprompt, "directives": self.directives}
 
-def make_hi(event):
+def make_hi(intent_name: str, slots: dict | None = None, confirmation_status: str = "NONE"):
     """
     Build a minimal object graph with .request_envelope.request.intent.slots
     so handler code that expects attributes doesn't crash.
     """
-    req_dict = event["request"]
-    intent_dict = req_dict.get("intent", {})
-    intent_ns = types.SimpleNamespace(**intent_dict)
-    if isinstance(getattr(intent_ns, "slots", None), dict):
-        pass
-    else:
-        intent_ns.slots = {}
-    req = types.SimpleNamespace(type=req_dict.get("type"), intent=intent_ns)
+    intent_ns = types.SimpleNamespace(
+        name=intent_name,
+        confirmation_status=confirmation_status,
+        slots=slots or {}
+    )
+    req = types.SimpleNamespace(type="IntentRequest", intent=intent_ns)
     env = types.SimpleNamespace(request=req)
     return types.SimpleNamespace(request_envelope=env, response_builder=DummyRB())
 
-def test_bottle_first_turn_prompts_confirmation(monkeypatch, load_event):
-    event = load_event("bottle_no_confirm.json")
-    hi = make_hi(event)
+def slot_value(v: str):
+    return types.SimpleNamespace(value=v)
 
+def slot_resolution(v: str, rid: str):
+    val_obj = types.SimpleNamespace(id=rid, name=v)
+    status = types.SimpleNamespace(code=types.SimpleNamespace(value="ER_SUCCESS_MATCH"))
+    rpa_item = types.SimpleNamespace(status=status, values=[types.SimpleNamespace(value=val_obj)])
+    resolutions = types.SimpleNamespace(resolutions_per_authority=[rpa_item])
+    return types.SimpleNamespace(value=v, resolutions=resolutions)
+
+# ---- tests ----
+
+def test_log_event_prompts_for_type_then_confirm(monkeypatch):
+    handler = lf.LogEventIntentHandler()
+
+    # Missing event_type -> elicit
+    hi1 = make_hi("LogEventIntent", slots={"notes": slot_value("hello")}, confirmation_status="NONE")
+    resp1 = handler.handle(hi1)
+    assert "type" in (resp1["speech"] or "").lower()
+    assert any(d.get("type","").endswith("ElicitSlot") for d in resp1["directives"])
+
+    # With event_type + notes, first turn -> ask to confirm (no HTTP call)
     called = {"n": 0}
     def _no_http(*a, **k):
         called["n"] += 1
         return {}
     monkeypatch.setattr(lf, "_http", _no_http)
 
-    handler = lf.LogBottleFeedIntentHandler()
-    resp = handler.handle(hi)
-    assert "save" in (resp["speech"] or "").lower()
-    assert {"type": "Dialog.ConfirmIntent"} in resp["directives"]
-    assert called["n"] == 0
-
-def test_bottle_confirmed_posts(monkeypatch, load_event):
-    event = load_event("bottle_confirmed.json")
-    hi = make_hi(event)
-
-    seen = {}
-    def _ok(method, path, payload=None):
-        seen["method"] = method; seen["path"] = path; seen["payload"] = payload
-        return {}
-    monkeypatch.setattr(lf, "_http", _ok)
-
-    handler = lf.LogBottleFeedIntentHandler()
-    resp = handler.handle(hi)
-    assert seen["method"] == "POST"
-    assert seen["path"] == "/log/feedevent"     # spec-aligned
-    assert seen["payload"]["type"] == "bottle"
-    assert 115 <= seen["payload"]["volume_ml"] <= 120  # 4 oz ≈ 118 ml
-    assert "saved" in (resp["speech"] or "").lower()
-
-def test_breast_requires_side_then_posts(monkeypatch):
-    # Missing side -> elicit
-    event_missing = {
-      "version":"1.0",
-      "request":{"type":"IntentRequest","intent":{"name":"LogBreastFeedIntent","confirmationStatus":"NONE","slots":{}}}
+    slots2 = {
+        "event_type": slot_resolution("Feeding", "feeding"),
+        "notes": slot_value("baby seemed hungry"),
     }
-    hi1 = make_hi(event_missing)
-    handler = lf.LogBreastFeedIntentHandler()
-    resp1 = handler.handle(hi1)
-    assert "left or right" in (resp1["speech"] or "").lower()
-
-    # Confirmed with side -> POST
-    event = {
-      "version": "1.0",
-      "request": {
-        "type": "IntentRequest",
-        "intent": {
-          "name": "LogBreastFeedIntent",
-          "confirmationStatus": "CONFIRMED",
-          "slots": {
-            "side": {"name": "side", "value": "left", "confirmationStatus": "NONE"},
-            "duration_value": {"name": "duration_value", "value": "15", "confirmationStatus": "NONE"},
-            "duration_unit": {"name": "duration_unit", "value": "minutes", "confirmationStatus": "NONE"},
-            "notes": {"name": "notes", "value": "sleepy", "confirmationStatus": "NONE"}
-          }
-        }
-      }
-    }
-    hi2 = make_hi(event)
-    seen = {}
-    def _ok(method, path, payload=None):
-        seen["method"] = method; seen["path"] = path; seen["payload"] = payload
-        return {}
-    monkeypatch.setattr(lf, "_http", _ok)
+    hi2 = make_hi("LogEventIntent", slots=slots2, confirmation_status="NONE")
     resp2 = handler.handle(hi2)
-    assert seen["method"] == "POST"
-    assert seen["path"] == "/log/feedevent"     # spec-aligned
-    assert seen["payload"]["type"] == "breast"
-    assert seen["payload"]["side"] == "left"
-    assert seen["payload"]["duration_min"] == 15
-    assert "saved" in (resp2["speech"] or "").lower()
+    assert "save" in (resp2["speech"] or "").lower()
+    assert any(d.get("type","").endswith("ConfirmIntent") for d in resp2["directives"])
+    assert called["n"] == 0  # no HTTP yet
 
-def test_nappy_number_two_maps_to_poo_and_posts(monkeypatch, load_event):
-    event = load_event("nappy_confirmed.json")
-    hi = make_hi(event)
+    # Confirmed -> POST /v1/event/{etype}
     seen = {}
     def _ok(method, path, payload=None):
-        seen["method"] = method; seen["path"] = path; seen["payload"] = payload
-        return {}
+        seen["method"] = method; seen["path"] = path; seen["payload"] = payload; return {}
     monkeypatch.setattr(lf, "_http", _ok)
 
-    handler = lf.LogNappyIntentHandler()
-    resp = handler.handle(hi)
+    hi3 = make_hi("LogEventIntent", slots=slots2, confirmation_status="CONFIRMED")
+    resp3 = handler.handle(hi3)
     assert seen["method"] == "POST"
-    assert seen["path"] == "/log/nappyevent"    # spec-aligned
-    assert seen["payload"]["type"] == "poo"
-    assert "saved" in (resp["speech"] or "").lower()
+    assert seen["path"] == f"/v1/event/{urllib.parse.quote('feeding')}"
+    assert seen["payload"] == {"notes": "baby seemed hungry"}
+    assert "saved" in (resp3["speech"] or "").lower()
+
+def test_last_event_calls_correct_endpoint(monkeypatch):
+    handler = lf.LastEventIntentHandler()
+    slots = {"event_type": slot_resolution("Nappy", "nappy")}
+    seen = {}
+    def _ok(method, path, payload=None):
+        seen["method"] = method; seen["path"] = path; return {"human": "2 hours ago"}
+    monkeypatch.setattr(lf, "_http", _ok)
+
+    hi = make_hi("LastEventIntent", slots=slots)
+    resp = handler.handle(hi)
+    assert seen["method"] == "GET"
+    assert seen["path"] == "/v1/event/nappy/last"
+    assert "last nappy" in (resp["speech"] or "").lower()
+
+def test_delete_last_event_confirmation_flow(monkeypatch):
+    handler = lf.DeleteLastEventIntentHandler()
+    slots = {"event_type": slot_resolution("Feeding", "feeding")}
+
+    # Ask to confirm initially
+    hi1 = make_hi("DeleteLastEventIntent", slots=slots, confirmation_status="NONE")
+    resp1 = handler.handle(hi1)
+    assert "delete the last feeding" in (resp1["speech"] or "").lower()
+
+    # Confirmed -> DELETE
+    seen = {}
+    def _ok(method, path, payload=None):
+        seen["method"] = method; seen["path"] = path; return {}
+    monkeypatch.setattr(lf, "_http", _ok)
+
+    hi2 = make_hi("DeleteLastEventIntent", slots=slots, confirmation_status="CONFIRMED")
+    resp2 = handler.handle(hi2)
+    assert seen["method"] == "DELETE"
+    assert seen["path"] == "/v1/event/feeding/last"
+    assert "deleted" in (resp2["speech"] or "").lower()
+
+def test_stats_events_with_type_and_period(monkeypatch):
+    handler = lf.StatsEventsIntentHandler()
+    slots = {
+        "event_type": slot_resolution("Nappy", "nappy"),
+        "period": slot_resolution("last 7 days", "last-7-days"),
+    }
+
+    seen = {}
+    def _ok(method, path, payload=None):
+        seen["method"] = method; seen["path"] = path; return {"count": 5}
+    monkeypatch.setattr(lf, "_http", _ok)
+
+    hi = make_hi("StatsEventsIntent", slots=slots)
+    resp = handler.handle(hi)
+    assert seen["method"] == "GET"
+    assert seen["path"] == "/v1/stats/events?period=7d&type=nappy"
+    assert "5" in (resp["speech"] or "")
+
+def test_stats_events_without_type_uses_default_period(monkeypatch):
+    handler = lf.StatsEventsIntentHandler()
+    slots = {
+        "period": slot_value("something unrecognized"),  # falls back to DEFAULT_PERIOD -> "7d"
+    }
+
+    seen = {}
+    def _ok(method, path, payload=None):
+        seen["method"] = method; seen["path"] = path; return {"count": 2}
+    monkeypatch.setattr(lf, "_http", _ok)
+
+    hi = make_hi("StatsEventsIntent", slots=slots)
+    resp = handler.handle(hi)
+    assert seen["method"] == "GET"
+    assert seen["path"] == "/v1/stats/events?period=7d"
+    assert "2" in (resp["speech"] or "")
